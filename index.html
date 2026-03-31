@@ -229,7 +229,7 @@
 
       <div class="br" style="margin-top:16px">
         <button class="b bo" onclick="dlCSV()">⬇ Export CSV</button>
-        <button class="b bp" onclick="dlNessus()">⬇ Export Nessus Report</button>
+        <button class="b bp" onclick="dlNessus()">⬇ Export PDF Report</button>
       </div>
     </div>
   </div>
@@ -579,7 +579,7 @@ function dlCSV(){
   log('CSV 已匯出','ok');
 }
 function dlNessus(){
-  if(curScan) return window.open(`${API}/scans/${curScan}/export/nessus`);
+  if(curScan) return window.open(`${API}/scans/${curScan}/export/pdf`);
   log('Nessus 原始報告需要真實掃描資料','err');
 }
 

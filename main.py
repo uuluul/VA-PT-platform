@@ -732,24 +732,36 @@ async def export_csv(sid: int):
     )
 
 
-@app.get("/api/scans/{sid}/export/nessus")
-async def export_nessus(sid: int, format: str = "nessus"):
-    """
-    從 Nessus 匯出原始報告
-    format: nessus / csv / html / db
-    """
-    n = get_nessus()
-    fobj = io.BytesIO()
-    n.scans.export_scan(sid, fobj=fobj, format=format)
-    fobj.seek(0)
+@app.get("/api/scans/{sid}/export/pdf")
+async def export_pdf(sid: int):
+    """匯出 PDF 報告"""
+    try:
+        url = f"{NESSUS_URL}/scans/{sid}/export"
+        headers = {"X-ApiKeys": f"accessKey={NESSUS_ACCESS_KEY}; secretKey={NESSUS_SECRET_KEY};",
+                    "Content-Type": "application/json"}
+        # 請求匯出 HTML（Nessus Pro 不支援直接 PDF，用 HTML 替代）
+        r = req_lib.post(url, headers=headers, json={"format": "html"}, verify=False)
+        token = r.json().get("token") or r.json().get("file")
 
-    ext = {"nessus": "nessus", "csv": "csv", "html": "html", "db": "db"}.get(format, "nessus")
-    media = {"csv": "text/csv", "html": "text/html"}.get(format, "application/octet-stream")
+        # 等待匯出完成
+        for _ in range(60):
+            s = req_lib.get(f"{NESSUS_URL}/scans/{sid}/export/{token}/status",
+                           headers=headers, verify=False)
+            if s.json().get("status") == "ready":
+                break
+            time.sleep(2)
 
-    return StreamingResponse(
-        fobj, media_type=media,
-        headers={"Content-Disposition": f'attachment; filename="nessus_{sid}.{ext}"'},
-    )
+        # 下載
+        dl = req_lib.get(f"{NESSUS_URL}/scans/{sid}/export/{token}/download",
+                         headers=headers, verify=False)
+
+        return StreamingResponse(
+            io.BytesIO(dl.content),
+            media_type="text/html",
+            headers={"Content-Disposition": f'attachment; filename="scan_{sid}_report.html"'}
+        )
+    except Exception as e:
+        raise HTTPException(500, f"匯出失敗: {e}")
 
 
 # ─── Scan History ─────────────────────────────────────
