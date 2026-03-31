@@ -15,6 +15,8 @@ from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel, Field
 
 from tenable.nessus import Nessus
+import requests as req_lib
+
 
 load_dotenv()
 
@@ -683,14 +685,24 @@ async def scan_results(sid: int):
 async def host_vulns(sid: int, hid: int):
     """特定主機的弱點"""
     n = get_nessus()
-    return n.scans.host_details(sid, hid)
-
+    try:
+        url = f"{NESSUS_URL}/scans/{sid}/hosts/{hid}"
+        headers = {"X-ApiKeys": f"accessKey={NESSUS_ACCESS_KEY}; secretKey={NESSUS_SECRET_KEY};"}
+        r = req_lib.get(url, headers=headers, verify=False)
+        return r.json()
+    except Exception as e:
+        raise HTTPException(500, f"取得主機弱點失敗: {e}")
 
 @app.get("/api/scans/{sid}/hosts/{hid}/plugins/{pid}")
 async def plugin_output(sid: int, hid: int, pid: int):
     """特定弱點的詳細輸出"""
-    n = get_nessus()
-    return n.scans.plugin_output(sid, hid, pid)
+    try:
+        url = f"{NESSUS_URL}/scans/{sid}/hosts/{hid}/plugins/{pid}"
+        headers = {"X-ApiKeys": f"accessKey={NESSUS_ACCESS_KEY}; secretKey={NESSUS_SECRET_KEY};"}
+        r = req_lib.get(url, headers=headers, verify=False)
+        return r.json()
+    except Exception as e:
+        raise HTTPException(500, f"取得弱點詳情失敗: {e}")
 
 
 # ─── 匯出報告 ─────────────────────────────────────────
