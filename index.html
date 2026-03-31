@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EASM Vulnerability Scanner</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@400;500;600;700;800&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box}
+  :root{
+    --bg:#0B0F19;--s1:#111827;--s2:#1A2235;--bd:#1F2C42;--bf:#3B82F6;
+    --tx:#E2E8F0;--t2:#8896AB;--ac:#3B82F6;--ag:rgba(59,130,246,.15);
+    --cr:#EF4444;--hi:#F97316;--md:#EAB308;--lo:#3B82F6;--inf:#6B7280;--ok:#22C55E;
+    --mono:'JetBrains Mono',monospace;--sans:'Outfit',system-ui,sans-serif;
+  }
+  body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100vh}
+
+  /* Header */
+  header{padding:20px 32px;display:flex;align-items:center;gap:14px;border-bottom:1px solid var(--bd)}
+  .logo{width:34px;height:34px;border-radius:8px;background:linear-gradient(135deg,#3B82F6,#06B6D4);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:16px;color:#fff}
+  header h1{font-size:18px;font-weight:700;letter-spacing:-.5px}
+  header .sub{font-size:12px;color:var(--t2);margin-left:auto}
+
+  .wrap{max-width:900px;margin:0 auto;padding:28px 24px;display:flex;flex-direction:column;gap:20px}
+
+  /* Card */
+  .c{background:var(--s1);border:1px solid var(--bd);border-radius:12px;overflow:hidden}
+  .ch{padding:14px 20px;border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:10px}
+  .ch h2{font-size:13px;font-weight:700;letter-spacing:.5px}
+  .ch .d{width:8px;height:8px;border-radius:50%}
+  .cb{padding:20px}
+
+  /* Form */
+  .fg{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .fg .f{grid-column:1/-1}
+  label{display:block;font-size:11px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px}
+  input,textarea,select{width:100%;padding:9px 13px;background:var(--s2);border:1px solid var(--bd);border-radius:8px;color:var(--tx);font-family:var(--mono);font-size:13px;outline:none;transition:border .2s}
+  input:focus,textarea:focus,select:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--ag)}
+  input::placeholder,textarea::placeholder{color:#4A5568}
+  textarea{resize:vertical;min-height:56px}
+  select option{background:var(--s2)}
+
+  /* Btn */
+  .br{display:flex;gap:10px;margin-top:6px;flex-wrap:wrap}
+  .b{padding:10px 22px;border-radius:8px;border:none;font-family:var(--sans);font-size:13px;font-weight:700;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:7px}
+  .b:disabled{opacity:.35;cursor:not-allowed}
+  .bp{background:var(--ac);color:#fff}.bp:hover:not(:disabled){background:#2563EB;box-shadow:0 0 20px var(--ag)}
+  .bo{background:transparent;color:var(--t2);border:1px solid var(--bd)}.bo:hover:not(:disabled){border-color:var(--t2);color:var(--tx)}
+
+  /* Status */
+  .sb{padding:14px 20px;display:flex;align-items:center;gap:12px;font-size:13px;font-family:var(--mono);border-radius:10px;border:1px solid var(--bd);background:var(--s1)}
+  .sb .p{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+  .p-run{background:var(--ac);animation:pu 1.5s ease-in-out infinite}
+  .p-ok{background:var(--ok)}.p-idle{background:var(--t2)}.p-err{background:var(--cr)}
+  @keyframes pu{0%,100%{box-shadow:0 0 0 0 rgba(59,130,246,.5)}50%{box-shadow:0 0 0 6px rgba(59,130,246,0)}}
+
+  /* Results */
+  .sr{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}
+  .sc{padding:8px 16px;border-radius:8px;font-size:13px;font-weight:700;font-family:var(--mono);display:flex;align-items:center;gap:8px;flex:1;min-width:90px;justify-content:center}
+  .sc .n{font-size:22px}
+
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{padding:10px 14px;font-size:11px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.8px;text-align:left;border-bottom:1px solid var(--bd);background:var(--s2)}
+  td{padding:10px 14px;border-bottom:1px solid var(--bd);font-family:var(--mono);font-size:12px}
+  tr:hover td{background:rgba(59,130,246,.04)}
+  tr[onclick]:hover td{background:rgba(59,130,246,.1);cursor:pointer}
+  tr[onclick]:hover td:first-child{color:var(--ac)}
+  .st{display:inline-block;padding:2px 10px;border-radius:4px;font-size:11px;font-weight:700;text-transform:uppercase}
+
+  .hid{display:none!important}
+
+  .tab{padding:12px 20px;font-size:13px;font-weight:600;color:var(--t2);background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;font-family:var(--sans);transition:all .15s}
+  .tab:hover{color:var(--tx)}
+  .tab-active{color:var(--tx);border-bottom-color:var(--ac)}
+
+  .chk-row{display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:6px;font-size:12px;color:var(--t2);cursor:pointer;font-family:var(--mono)}
+  .chk-row:hover{background:var(--s2)}
+  .chk-row input{width:auto;accent-color:var(--ac)}
+
+  .log{background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:14px;max-height:140px;overflow-y:auto;font-family:var(--mono);font-size:12px;color:var(--t2);line-height:1.8}
+  .log .ts{color:#4A5568}.log .ok{color:var(--ok)}.log .er{color:var(--cr)}
+
+  ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--bd);border-radius:3px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">E</div>
+  <h1>VA/PT Scanner</h1>
+  <span class="sub" id="connStatus">● Connecting...</span>
+</header>
+
+<!-- Tab Nav -->
+<nav style="background:var(--s1);border-bottom:1px solid var(--bd);padding:0 32px;display:flex;gap:4px">
+  <button class="tab tab-active" onclick="switchTab('scan',this)">Scan</button>
+  <button class="tab" onclick="switchTab('policy',this)">Policy Manager</button>
+</nav>
+
+<div class="wrap">
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- TAB: SCAN                                  -->
+  <!-- ══════════════════════════════════════════ -->
+  <div id="tabScan">
+
+  <!-- ═══ SCAN CONFIG ═══ -->
+  <div class="c">
+    <div class="ch"><div class="d" style="background:var(--hi)"></div><h2>SCAN CONFIGURATION</h2></div>
+    <div class="cb">
+      <div class="fg">
+        <div class="f">
+          <label>Scan Name</label>
+          <input id="sName" value="EASM Scan" placeholder="e.g. Weekly Perimeter Scan">
+        </div>
+        <div class="f">
+          <label>Targets — IP / CIDR / Hostname（每行一個或逗號分隔）</label>
+          <textarea id="sTargets" rows="3" placeholder="192.168.1.0/24&#10;10.0.0.1&#10;example.com"></textarea>
+        </div>
+        <div>
+          <label>Port Range（留空用預設）</label>
+          <input id="sPorts" placeholder="1-1024, 3389, 8080">
+        </div>
+        <div>
+          <label>Scan Template</label>
+          <select id="sTmpl"><option value="">Loading...</option></select>
+        </div>
+        <div>
+          <label>Policy（可選）</label>
+          <select id="sPol"><option value="">— Default —</option></select>
+        </div>
+        <div>
+          <label>Description</label>
+          <input id="sDesc" placeholder="Optional">
+        </div>
+      </div>
+      <div class="br">
+        <button class="b bp" id="btnGo" onclick="go()">▶ Launch Scan</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ BATCH UPLOAD ═══ -->
+  <div class="c">
+    <div class="ch"><div class="d" style="background:var(--md)"></div><h2>BATCH SCAN（CSV 批次上傳）</h2></div>
+    <div class="cb">
+      <p style="font-size:13px;color:var(--t2);margin-bottom:14px;line-height:1.6">
+        上傳 CSV 檔案，每行一組掃描任務，可指定不同的 targets、policy、port range。<br>
+        系統會為每一行建立一個獨立的掃描任務並自動啟動。
+      </p>
+
+      <!-- CSV 格式說明 -->
+      <div style="background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:14px;margin-bottom:14px;overflow-x:auto">
+        <div style="font-size:11px;font-weight:700;color:var(--t2);letter-spacing:1px;margin-bottom:8px">CSV FORMAT</div>
+        <table style="font-size:12px;border-collapse:collapse;width:100%">
+          <thead><tr style="border-bottom:1px solid var(--bd)">
+            <th style="padding:6px 10px;text-align:left;color:var(--ac);font-size:11px">name</th>
+            <th style="padding:6px 10px;text-align:left;color:var(--ac);font-size:11px">targets</th>
+            <th style="padding:6px 10px;text-align:left;color:var(--ac);font-size:11px">policy_id</th>
+            <th style="padding:6px 10px;text-align:left;color:var(--ac);font-size:11px">port_range</th>
+            <th style="padding:6px 10px;text-align:left;color:var(--ac);font-size:11px">template_name</th>
+            <th style="padding:6px 10px;text-align:left;color:var(--ac);font-size:11px">description</th>
+          </tr></thead>
+          <tbody style="font-family:var(--mono);color:var(--t2)">
+            <tr><td style="padding:4px 10px">Web Servers</td><td style="padding:4px 10px">192.168.1.10, 192.168.1.11</td><td style="padding:4px 10px"></td><td style="padding:4px 10px">80,443,8080</td><td style="padding:4px 10px">basic</td><td style="padding:4px 10px">Web group</td></tr>
+            <tr><td style="padding:4px 10px">DB Servers</td><td style="padding:4px 10px">10.0.0.50, 10.0.0.51</td><td style="padding:4px 10px">21</td><td style="padding:4px 10px">3306,5432</td><td style="padding:4px 10px"></td><td style="padding:4px 10px">Database</td></tr>
+            <tr><td style="padding:4px 10px">Office Network</td><td style="padding:4px 10px">172.16.0.0/24</td><td style="padding:4px 10px"></td><td style="padding:4px 10px"></td><td style="padding:4px 10px">basic</td><td style="padding:4px 10px">Full scan</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Upload -->
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <input type="file" id="csvFile" accept=".csv" style="font-family:var(--mono);font-size:13px;color:var(--t2)">
+        <button class="b bp" onclick="batchUpload()">⬆ Upload & Launch All</button>
+        <button class="b bo" onclick="dlTemplate()">⬇ Download CSV Template</button>
+      </div>
+
+      <!-- Batch Results -->
+      <div class="hid" id="batchResult" style="margin-top:14px">
+        <div style="font-size:12px;font-weight:700;color:var(--t2);letter-spacing:1px;margin-bottom:8px">BATCH RESULTS</div>
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr><th>Name</th><th>Targets</th><th>Scan ID</th><th>Status</th></tr></thead>
+            <tbody id="batchBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ STATUS ═══ -->
+  <div style="display:flex;gap:10px;align-items:center">
+    <div class="sb" style="flex:1"><div class="p p-idle" id="sDot"></div><span id="sTxt">Idle</span></div>
+    <button class="b bo" onclick="loadDemo()" style="white-space:nowrap">📋 Load Demo Data</button>
+  </div>
+
+  <!-- ═══ LOG ═══ -->
+  <div class="c">
+    <div class="ch"><div class="d" style="background:var(--t2)"></div><h2>LOG</h2></div>
+    <div class="cb" style="padding:10px"><div class="log" id="logBox"></div></div>
+  </div>
+
+  <!-- ═══ RESULTS ═══ -->
+  <div class="c hid" id="resCard">
+    <div class="ch"><div class="d" style="background:var(--ok)"></div><h2>RESULTS</h2></div>
+    <div class="cb">
+      <div class="sr" id="sevRow"></div>
+
+      <h3 style="font-size:12px;font-weight:700;color:var(--t2);margin-bottom:8px;letter-spacing:1px">HOSTS（點擊查看弱點）</h3>
+      <div style="overflow-x:auto">
+        <table><thead><tr><th>Host</th><th>Critical</th><th>High</th><th>Medium</th><th>Low</th><th>Info</th></tr></thead>
+        <tbody id="hBody"></tbody></table>
+      </div>
+
+      <!-- 選中的 Host 弱點 -->
+      <div class="hid" id="hostVulnCard" style="margin-top:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <h3 style="font-size:12px;font-weight:700;color:var(--ac);letter-spacing:1px" id="hostVulnTitle">VULNERABILITIES — ?</h3>
+          <button class="b bo" style="padding:4px 12px;font-size:11px" onclick="closeHostVulns()">✕ Close</button>
+        </div>
+        <div style="overflow-x:auto">
+          <table><thead><tr><th>Plugin ID</th><th>Name</th><th>Severity</th><th>Count</th><th>Family</th></tr></thead>
+          <tbody id="vBody"></tbody></table>
+        </div>
+      </div>
+
+      <div class="br" style="margin-top:16px">
+        <button class="b bo" onclick="dlCSV()">⬇ Export CSV</button>
+        <button class="b bp" onclick="dlNessus()">⬇ Export Nessus Report</button>
+      </div>
+    </div>
+  </div>
+
+  </div><!-- /tabScan -->
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- TAB: POLICY MANAGER                        -->
+  <!-- ══════════════════════════════════════════ -->
+  <div id="tabPolicy" class="hid">
+
+    <!-- Existing Policies List -->
+    <div class="c">
+      <div class="ch"><div class="d" style="background:var(--ac)"></div><h2>EXISTING POLICIES</h2></div>
+      <div class="cb">
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr><th>ID</th><th>Name</th><th>Description</th><th>Actions</th></tr></thead>
+            <tbody id="polBody"><tr><td colspan="4" style="color:var(--t2);text-align:center">Loading...</td></tr></tbody>
+          </table>
+        </div>
+        <div class="br"><button class="b bo" onclick="loadPolicies()">↻ Refresh</button></div>
+      </div>
+    </div>
+
+    <!-- Create New Policy -->
+    <div class="c">
+      <div class="ch"><div class="d" style="background:var(--ok)"></div><h2>CREATE NEW POLICY</h2></div>
+      <div class="cb">
+        <div class="fg">
+          <!-- Basic -->
+          <div>
+            <label>Policy Name *</label>
+            <input id="pName" placeholder="e.g. Web Server Policy">
+          </div>
+          <div>
+            <label>Base Template</label>
+            <select id="pTmpl"><option value="advanced">Advanced Scan</option></select>
+          </div>
+          <div class="f">
+            <label>Description</label>
+            <input id="pDesc" placeholder="Optional description">
+          </div>
+        </div>
+
+        <!-- Discovery -->
+        <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--bd)">
+          <div style="font-size:12px;font-weight:700;color:var(--ac);letter-spacing:1px;margin-bottom:12px">DISCOVERY</div>
+          <div class="fg">
+            <div>
+              <label>Port Range</label>
+              <input id="pPorts" value="default" placeholder="default / 1-65535 / 80,443,8080">
+            </div>
+            <div>
+              <label>Ping Method</label>
+              <select id="pPing">
+                <option value="ARP, TCP, and ICMP">ARP + TCP + ICMP（預設）</option>
+                <option value="TCP">TCP Only</option>
+                <option value="ICMP">ICMP Only</option>
+                <option value="ARP">ARP Only</option>
+                <option value="None">None（不 Ping）</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Plugin Families -->
+        <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--bd)">
+          <div style="font-size:12px;font-weight:700;color:var(--ac);letter-spacing:1px;margin-bottom:6px">PLUGIN FAMILIES</div>
+          <p style="font-size:12px;color:var(--t2);margin-bottom:12px">勾選要啟用的 Plugin 家族，不勾 = 全部啟用</p>
+          <div id="pluginFamilies" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px;max-height:240px;overflow-y:auto;padding:8px;background:var(--bg);border-radius:8px;border:1px solid var(--bd)">
+            <div style="color:var(--t2);font-size:12px">Loading plugin families...</div>
+          </div>
+        </div>
+
+        <!-- Credentials -->
+        <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--bd)">
+          <div style="font-size:12px;font-weight:700;color:var(--ac);letter-spacing:1px;margin-bottom:12px">CREDENTIALS（可選，做認證掃描用）</div>
+
+          <!-- SSH -->
+          <div style="margin-bottom:14px">
+            <div style="font-size:11px;font-weight:700;color:var(--md);letter-spacing:1px;margin-bottom:8px">SSH</div>
+            <div class="fg">
+              <div><label>Username</label><input id="pSshUser" placeholder="root"></div>
+              <div><label>Password</label><input id="pSshPass" type="password" placeholder="••••••"></div>
+              <div><label>Port</label><input id="pSshPort" value="22" placeholder="22"></div>
+            </div>
+          </div>
+
+          <!-- SMB / Windows -->
+          <div style="margin-bottom:14px">
+            <div style="font-size:11px;font-weight:700;color:var(--md);letter-spacing:1px;margin-bottom:8px">SMB / WINDOWS</div>
+            <div class="fg">
+              <div><label>Username</label><input id="pSmbUser" placeholder="Administrator"></div>
+              <div><label>Password</label><input id="pSmbPass" type="password" placeholder="••••••"></div>
+              <div><label>Domain</label><input id="pSmbDomain" placeholder="WORKGROUP"></div>
+            </div>
+          </div>
+
+          <!-- SNMP -->
+          <div>
+            <div style="font-size:11px;font-weight:700;color:var(--md);letter-spacing:1px;margin-bottom:8px">SNMP</div>
+            <div class="fg">
+              <div><label>Community String</label><input id="pSnmpComm" placeholder="public"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Web App -->
+        <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--bd)">
+          <div class="fg">
+            <div>
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                <input type="checkbox" id="pWebApp" style="width:auto;accent-color:var(--ac)">
+                <span>啟用 Web Application 掃描</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="br" style="margin-top:20px">
+          <button class="b bp" onclick="createPolicy()">✚ Create Policy</button>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /tabPolicy -->
+
+</div>
+
+<script>
+const API = window.location.origin + '/api';
+const $=id=>document.getElementById(id);
+let curScan=null, pollId=null, resData=null;
+const SC={critical:{c:'var(--cr)'},high:{c:'var(--hi)'},medium:{c:'var(--md)'},low:{c:'var(--lo)'},info:{c:'var(--inf)'}};
+
+function log(m,t=''){const b=$('logBox'),ts=new Date().toLocaleTimeString(),cl=t==='ok'?'ok':t==='err'?'er':'';
+b.innerHTML+=`<div><span class="ts">[${ts}]</span> <span class="${cl}">${m}</span></div>`;b.scrollTop=b.scrollHeight}
+function stat(t,s='idle'){$('sTxt').textContent=t;const d=$('sDot');d.className='p';d.classList.add(s==='running'?'p-run':s==='done'?'p-ok':s==='error'?'p-err':'p-idle')}
+
+async function api(method,path,body){
+  const o={method,headers:{'Content-Type':'application/json'}};
+  if(body)o.body=JSON.stringify(body);
+  const r=await fetch(API+path,o);
+  if(!r.ok)throw new Error(`HTTP ${r.status}`);
+  const t=await r.text();return t?JSON.parse(t):{};
+}
+
+// ─── Init: load dropdowns ──────────────
+async function init(){
+  try{
+    const h=await api('GET','/health');
+    if(h.nessus_connected){
+      $('connStatus').innerHTML='<span style="color:var(--ok)">● Connected</span>';
+      log('Backend 已連線 Nessus','ok');
+    } else {
+      $('connStatus').innerHTML='<span style="color:var(--cr)">● Disconnected</span>';
+      log('Backend 未連線 Nessus，請檢查 .env 設定','err');
+      return;
+    }
+    // Templates
+    const tm=await api('GET','/templates');
+    const ts=$('sTmpl');ts.innerHTML='';
+    const pt=$('pTmpl');pt.innerHTML='';
+    (tm.templates||[]).forEach(t=>{
+      const o=document.createElement('option');o.value=t.name;o.textContent=t.title||t.name;ts.appendChild(o);
+      const o2=document.createElement('option');o2.value=t.name;o2.textContent=t.title||t.name;
+      if((t.name||'').includes('advanced'))o2.selected=true;
+      pt.appendChild(o2);
+    });
+    log(`${tm.templates?.length||0} templates loaded`,'ok');
+
+    // Policies
+    const po=await api('GET','/policies');
+    const ps=$('sPol');ps.innerHTML='<option value="">— Default —</option>';
+    (po.policies||[]).forEach(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.name;ps.appendChild(o)});
+    log(`${po.policies?.length||0} policies loaded`,'ok');
+  }catch(e){
+    $('connStatus').innerHTML='<span style="color:var(--cr)">● API Error</span>';
+    log(`初始化失敗: ${e.message}`,'err');
+  }
+}
+init();
+
+// ─── Launch ────────────────────────────
+async function go(){
+  const targets=$('sTargets').value.trim();
+  if(!targets){log('請輸入掃描目標','err');return}
+
+  $('btnGo').disabled=true;
+  stat('Creating scan...','running');
+  log('建立掃描...');
+
+  try{
+    const body={
+      name:$('sName').value||'EASM Scan',
+      targets:targets.replace(/\n/g,', '),
+      description:$('sDesc').value||'',
+    };
+    const ports=$('sPorts').value.trim();
+    if(ports) body.port_range=ports;
+    const tmpl=$('sTmpl').value;
+    if(tmpl) body.template_name=tmpl;
+    const pol=$('sPol').value;
+    if(pol) body.policy_id=parseInt(pol);
+
+    const r=await api('POST','/scans',body);
+    curScan=r.scan_id;
+    log(`掃描 #${curScan} 已建立並啟動 ✓`,'ok');
+    stat(`Scan #${curScan} running...`,'running');
+    startPoll();
+  }catch(e){
+    log(`失敗: ${e.message}`,'err');
+    stat('Failed','error');
+  }
+  $('btnGo').disabled=false;
+}
+
+// ─── Poll ──────────────────────────────
+function startPoll(){
+  if(pollId)clearInterval(pollId);
+  pollId=setInterval(async()=>{
+    try{
+      const s=await api('GET',`/scans/${curScan}/status`);
+      stat(`Scan #${curScan} — ${s.status}`,s.status==='completed'?'done':'running');
+      if(['completed','canceled','aborted'].includes(s.status)){
+        clearInterval(pollId);pollId=null;
+        log(`掃描結束: ${s.status}`,s.status==='completed'?'ok':'err');
+        loadResults();
+      }
+    }catch(e){log(`poll error: ${e.message}`,'err')}
+  },10000);
+  log('輪詢中（每 10 秒）');
+}
+
+async function loadResults(){
+  try{
+    resData=await api('GET',`/scans/${curScan}/results`);
+    render(resData);
+  }catch(e){log(`載入結果失敗: ${e.message}`,'err')}
+}
+
+// ─── Render ────────────────────────────
+function render(d){
+  $('resCard').classList.remove('hid');
+  $('hostVulnCard').classList.add('hid');
+  const sm=d.severity_summary||{};
+  const colors={critical:'var(--cr)',high:'var(--hi)',medium:'var(--md)',low:'var(--lo)',info:'var(--inf)'};
+
+  $('sevRow').innerHTML=Object.entries(sm).map(([k,v])=>
+    `<div class="sc" style="background:${colors[k]}18;color:${colors[k]};border:1px solid ${colors[k]}33"><span class="n">${v}</span>${k.toUpperCase()}</div>`
+  ).join('');
+
+  const hosts=d.hosts||[];
+  $('hBody').innerHTML=hosts.map((h,i)=>{const s=h.severity_counts||{};return`<tr onclick="selectHost(${i})" style="cursor:pointer" id="hRow${i}">
+    <td style="font-weight:500">${h.hostname||'N/A'}</td>
+    <td style="color:var(--cr);font-weight:700">${s.critical||0}</td>
+    <td style="color:var(--hi);font-weight:700">${s.high||0}</td>
+    <td style="color:var(--md);font-weight:700">${s.medium||0}</td>
+    <td style="color:var(--lo);font-weight:700">${s.low||0}</td>
+    <td style="color:var(--inf)">${s.info||0}</td></tr>`}).join('');
+
+  log(`顯示結果: ${hosts.length} hosts — 點擊 host 查看弱點`,'ok');
+}
+
+let selectedHostIdx=null;
+
+function selectHost(idx){
+  const d=resData;
+  if(!d)return;
+  const host=d.hosts[idx];
+  if(!host)return;
+  selectedHostIdx=idx;
+
+  // 高亮選中的 row
+  document.querySelectorAll('#hBody tr').forEach((r,i)=>{
+    r.style.background=i===idx?'var(--ag)':'';
+  });
+
+  // 顯示弱點區塊
+  $('hostVulnCard').classList.remove('hid');
+  $('hostVulnTitle').textContent=`VULNERABILITIES — ${host.hostname}`;
+
+  // 取得這台 host 的弱點
+  const vulns=host.vulnerabilities||d.host_vulns?.[host.hostname]||d.host_vulns?.[host.host_id]||[];
+  const colors={critical:'var(--cr)',high:'var(--hi)',medium:'var(--md)',low:'var(--lo)',info:'var(--inf)'};
+  const sm2={0:'info',1:'low',2:'medium',3:'high',4:'critical'};
+
+  if(vulns.length){
+    const sorted=[...vulns].sort((a,b)=>(b.severity||0)-(a.severity||0));
+    $('vBody').innerHTML=sorted.map(v=>{const l=sm2[v.severity]||v.severity_label||'info';const c=colors[l]||colors.info;
+      return`<tr><td>${v.plugin_id||''}</td>
+      <td style="font-family:var(--sans);font-weight:500">${v.plugin_name||''}</td>
+      <td><span class="st" style="background:${c}22;color:${c}">${l}</span></td>
+      <td style="font-weight:700">${v.count||1}</td>
+      <td style="color:var(--t2)">${v.plugin_family||''}</td></tr>`}).join('');
+  } else if(curScan && host.host_id){
+    // 從 API 載入
+    loadHostVulns(curScan, host.host_id, host.hostname);
+  } else {
+    $('vBody').innerHTML='<tr><td colspan="5" style="color:var(--t2);text-align:center">No vulnerability data for this host</td></tr>';
+  }
+
+  log(`查看 ${host.hostname} 的弱點`);
+}
+
+async function loadHostVulns(scanId, hostId, hostname){
+  $('vBody').innerHTML='<tr><td colspan="5" style="color:var(--t2);text-align:center">Loading...</td></tr>';
+  try{
+    const d=await api('GET',`/scans/${scanId}/hosts/${hostId}`);
+    const vulns=d.vulnerabilities||[];
+    const colors={critical:'var(--cr)',high:'var(--hi)',medium:'var(--md)',low:'var(--lo)',info:'var(--inf)'};
+    const sm2={0:'info',1:'low',2:'medium',3:'high',4:'critical'};
+    const sorted=[...vulns].sort((a,b)=>(b.severity||0)-(a.severity||0));
+    $('vBody').innerHTML=sorted.map(v=>{const l=sm2[v.severity]||'info';const c=colors[l]||colors.info;
+      return`<tr><td>${v.plugin_id||''}</td>
+      <td style="font-family:var(--sans);font-weight:500">${v.plugin_name||''}</td>
+      <td><span class="st" style="background:${c}22;color:${c}">${l}</span></td>
+      <td style="font-weight:700">${v.count||1}</td>
+      <td style="color:var(--t2)">${v.plugin_family||''}</td></tr>`}).join('');
+    log(`${hostname}: ${vulns.length} vulnerabilities`,'ok');
+  }catch(e){
+    $('vBody').innerHTML=`<tr><td colspan="5" style="color:var(--cr);text-align:center">載入失敗: ${e.message}</td></tr>`;
+  }
+}
+
+function closeHostVulns(){
+  $('hostVulnCard').classList.add('hid');
+  selectedHostIdx=null;
+  document.querySelectorAll('#hBody tr').forEach(r=>r.style.background='');
+}
+
+// ─── Export ────────────────────────────
+function dlCSV(){
+  // 如果有真的 scan，從 API 下載
+  if(curScan) return window.open(`${API}/scans/${curScan}/export/csv`);
+  // 否則從前端 resData 產生
+  if(!resData) return log('沒有資料可匯出','err');
+  const rows=[['Host','Plugin ID','Name','Severity','Count','Family']];
+  (resData.hosts||[]).forEach(h=>{
+    (h.vulnerabilities||[]).forEach(v=>rows.push([`"${h.hostname}"`,v.plugin_id,`"${v.plugin_name}"`,v.severity_label||'info',v.count||1,`"${v.plugin_family||''}"`]));
+  });
+  const csv=rows.map(r=>r.join(',')).join('\n');
+  const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download=`easm_scan_${Date.now()}.csv`;a.click();
+  log('CSV 已匯出','ok');
+}
+function dlNessus(){
+  if(curScan) return window.open(`${API}/scans/${curScan}/export/nessus`);
+  log('Nessus 原始報告需要真實掃描資料','err');
+}
+
+// ─── Load Demo Data ───────────────────
+function loadDemo(){
+  resData={
+    scan_info:{name:"EASM Demo Scan",status:"completed",targets:"203.0.113.0/24, 198.51.100.0/28",start_time:1711756800,end_time:1711760400,host_count:5,policy:"Advanced Scan",scanner_name:"Local Scanner"},
+    hosts:[
+      {host_id:1,hostname:"203.0.113.10",severity_counts:{critical:2,high:5,medium:12,low:8,info:45},score:78,
+       vulnerabilities:[
+         {plugin_id:57582,plugin_name:"SSL/TLS Certificate Expiry",plugin_family:"General",severity:4,severity_label:"critical",count:1},
+         {plugin_id:10863,plugin_name:"SSL Certificate - Self Signed",plugin_family:"General",severity:4,severity_label:"critical",count:1},
+         {plugin_id:42873,plugin_name:"SSL Medium Strength Cipher Suites",plugin_family:"General",severity:3,severity_label:"high",count:2},
+         {plugin_id:65821,plugin_name:"OpenSSH < 9.0 Multiple Vulnerabilities",plugin_family:"Misc.",severity:3,severity_label:"high",count:1},
+         {plugin_id:35291,plugin_name:"SSL Certificate Signed Using Weak Hashing",plugin_family:"General",severity:2,severity_label:"medium",count:3},
+         {plugin_id:11219,plugin_name:"Nessus SYN scanner",plugin_family:"Port scanners",severity:1,severity_label:"low",count:8},
+         {plugin_id:10180,plugin_name:"Ping the remote host",plugin_family:"Port scanners",severity:0,severity_label:"info",count:1},
+       ]},
+      {host_id:2,hostname:"203.0.113.22",severity_counts:{critical:0,high:3,medium:7,low:15,info:62},score:45,
+       vulnerabilities:[
+         {plugin_id:20007,plugin_name:"SSL Version 2 and 3 Protocol Detection",plugin_family:"Service detection",severity:3,severity_label:"high",count:1},
+         {plugin_id:51192,plugin_name:"SSL Certificate Not Trusted",plugin_family:"General",severity:3,severity_label:"high",count:1},
+         {plugin_id:42873,plugin_name:"SSL Medium Strength Cipher Suites",plugin_family:"General",severity:3,severity_label:"high",count:1},
+         {plugin_id:22964,plugin_name:"Service Detection",plugin_family:"Service detection",severity:2,severity_label:"medium",count:4},
+         {plugin_id:10287,plugin_name:"Traceroute Information",plugin_family:"General",severity:2,severity_label:"medium",count:3},
+         {plugin_id:11219,plugin_name:"Nessus SYN scanner",plugin_family:"Port scanners",severity:1,severity_label:"low",count:15},
+         {plugin_id:10180,plugin_name:"Ping the remote host",plugin_family:"Port scanners",severity:0,severity_label:"info",count:1},
+       ]},
+      {host_id:3,hostname:"web-server.example.com",severity_counts:{critical:4,high:8,medium:15,low:5,info:30},score:92,
+       vulnerabilities:[
+         {plugin_id:97833,plugin_name:"Apache Log4j RCE (Log4Shell)",plugin_family:"Web Servers",severity:4,severity_label:"critical",count:1},
+         {plugin_id:57582,plugin_name:"SSL/TLS Certificate Expiry",plugin_family:"General",severity:4,severity_label:"critical",count:1},
+         {plugin_id:10863,plugin_name:"SSL Certificate - Self Signed",plugin_family:"General",severity:4,severity_label:"critical",count:1},
+         {plugin_id:34460,plugin_name:"Apache HTTP Server < 2.4.55 RCE",plugin_family:"Web Servers",severity:4,severity_label:"critical",count:1},
+         {plugin_id:42873,plugin_name:"SSL Medium Strength Cipher Suites",plugin_family:"General",severity:3,severity_label:"high",count:2},
+         {plugin_id:65821,plugin_name:"OpenSSH < 9.0 Multiple Vulnerabilities",plugin_family:"Misc.",severity:3,severity_label:"high",count:1},
+         {plugin_id:20007,plugin_name:"SSL Version 2 and 3 Protocol Detection",plugin_family:"Service detection",severity:3,severity_label:"high",count:1},
+         {plugin_id:112552,plugin_name:"PHP < 8.1.0 Multiple Vulnerabilities",plugin_family:"CGI abuses",severity:3,severity_label:"high",count:1},
+         {plugin_id:35291,plugin_name:"SSL Certificate Signed Using Weak Hashing",plugin_family:"General",severity:2,severity_label:"medium",count:2},
+         {plugin_id:22964,plugin_name:"Service Detection",plugin_family:"Service detection",severity:2,severity_label:"medium",count:5},
+         {plugin_id:11219,plugin_name:"Nessus SYN scanner",plugin_family:"Port scanners",severity:1,severity_label:"low",count:5},
+         {plugin_id:10180,plugin_name:"Ping the remote host",plugin_family:"Port scanners",severity:0,severity_label:"info",count:1},
+       ]},
+      {host_id:4,hostname:"mail.example.com",severity_counts:{critical:1,high:2,medium:9,low:11,info:38},score:55,
+       vulnerabilities:[
+         {plugin_id:10863,plugin_name:"SSL Certificate - Self Signed",plugin_family:"General",severity:4,severity_label:"critical",count:1},
+         {plugin_id:42873,plugin_name:"SSL Medium Strength Cipher Suites",plugin_family:"General",severity:3,severity_label:"high",count:1},
+         {plugin_id:51192,plugin_name:"SSL Certificate Not Trusted",plugin_family:"General",severity:3,severity_label:"high",count:1},
+         {plugin_id:35291,plugin_name:"SSL Certificate Signed Using Weak Hashing",plugin_family:"General",severity:2,severity_label:"medium",count:2},
+         {plugin_id:22964,plugin_name:"Service Detection",plugin_family:"Service detection",severity:2,severity_label:"medium",count:3},
+         {plugin_id:11219,plugin_name:"Nessus SYN scanner",plugin_family:"Port scanners",severity:1,severity_label:"low",count:11},
+         {plugin_id:10180,plugin_name:"Ping the remote host",plugin_family:"Port scanners",severity:0,severity_label:"info",count:1},
+       ]},
+      {host_id:5,hostname:"api.example.com",severity_counts:{critical:3,high:6,medium:4,low:2,info:22},score:85,
+       vulnerabilities:[
+         {plugin_id:97833,plugin_name:"Apache Log4j RCE (Log4Shell)",plugin_family:"Web Servers",severity:4,severity_label:"critical",count:1},
+         {plugin_id:57582,plugin_name:"SSL/TLS Certificate Expiry",plugin_family:"General",severity:4,severity_label:"critical",count:1},
+         {plugin_id:10863,plugin_name:"SSL Certificate - Self Signed",plugin_family:"General",severity:4,severity_label:"critical",count:1},
+         {plugin_id:65821,plugin_name:"OpenSSH < 9.0 Multiple Vulnerabilities",plugin_family:"Misc.",severity:3,severity_label:"high",count:2},
+         {plugin_id:20007,plugin_name:"SSL Version 2 and 3 Protocol Detection",plugin_family:"Service detection",severity:3,severity_label:"high",count:2},
+         {plugin_id:51192,plugin_name:"SSL Certificate Not Trusted",plugin_family:"General",severity:3,severity_label:"high",count:1},
+         {plugin_id:10287,plugin_name:"Traceroute Information",plugin_family:"General",severity:2,severity_label:"medium",count:2},
+         {plugin_id:11219,plugin_name:"Nessus SYN scanner",plugin_family:"Port scanners",severity:1,severity_label:"low",count:2},
+         {plugin_id:10180,plugin_name:"Ping the remote host",plugin_family:"Port scanners",severity:0,severity_label:"info",count:1},
+       ]},
+    ],
+    severity_summary:{critical:10,high:21,medium:34,low:45,info:197},
+  };
+  curScan=null;
+  render(resData);
+  stat('Demo data loaded — click a host to view vulnerabilities','done');
+  log('已載入 Demo 假資料（5 hosts）— 點擊任一 host 查看弱點','ok');
+}
+
+// ─── Batch ────────────────────────────
+function dlTemplate(){ window.open(`${API}/batch/template`) }
+
+async function batchUpload(){
+  const fileInput=$('csvFile');
+  if(!fileInput.files.length){log('請選擇 CSV 檔案','err');return}
+
+  const file=fileInput.files[0];
+  log(`上傳批次掃描: ${file.name} (${(file.size/1024).toFixed(1)} KB)`);
+  stat('Uploading batch scan...','running');
+
+  const form=new FormData();
+  form.append('file',file);
+
+  try{
+    const r=await fetch(API+'/batch/scans',{method:'POST',body:form});
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data=await r.json();
+
+    log(`批次結果: ${data.launched} launched / ${data.failed} failed / ${data.total} total`,
+        data.failed===0?'ok':'err');
+    stat(`Batch: ${data.launched}/${data.total} scans launched`, data.failed===0?'done':'running');
+
+    // 顯示結果表格
+    $('batchResult').classList.remove('hid');
+    $('batchBody').innerHTML=(data.scans||[]).map(s=>{
+      const ok=s.status==='launched';
+      return`<tr>
+        <td style="font-family:var(--sans);font-weight:500">${s.name}</td>
+        <td>${s.targets}</td>
+        <td>${s.scan_id||'—'}</td>
+        <td style="color:${ok?'var(--ok)':'var(--cr)'};font-weight:700">${s.status}</td>
+      </tr>`
+    }).join('');
+
+    // 追蹤第一個成功的 scan
+    const first=data.scans?.find(s=>s.status==='launched');
+    if(first){
+      curScan=first.scan_id;
+      startPoll();
+    }
+  }catch(e){
+    log(`批次上傳失敗: ${e.message}`,'err');
+    stat('Batch upload failed','error');
+  }
+}
+
+// ─── Tab Switching ────────────────────
+function switchTab(tab, btn){
+  // Hide all tabs
+  $('tabScan').classList.add('hid');
+  $('tabPolicy').classList.add('hid');
+  // Show selected
+  if(tab==='scan') $('tabScan').classList.remove('hid');
+  if(tab==='policy'){ $('tabPolicy').classList.remove('hid'); loadPolicies(); loadPluginFamilies(); }
+  // Active button
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('tab-active'));
+  btn.classList.add('tab-active');
+}
+
+// ─── Policy Management ────────────────
+async function loadPolicies(){
+  try{
+    const d=await api('GET','/policies');
+    const pols=d.policies||[];
+    $('polBody').innerHTML=pols.length?pols.map(p=>`<tr>
+      <td style="font-weight:700;color:var(--ac)">${p.id}</td>
+      <td style="font-family:var(--sans);font-weight:500">${p.name}</td>
+      <td style="color:var(--t2)">${p.description||'—'}</td>
+      <td><button class="b bo" style="padding:5px 12px;font-size:11px" onclick="deletePolicy(${p.id})">Delete</button></td>
+    </tr>`).join('')
+    :'<tr><td colspan="4" style="color:var(--t2);text-align:center">No policies found — create one below</td></tr>';
+
+    // 同步更新 Scan 頁面的 policy 下拉
+    const ps=$('sPol');
+    ps.innerHTML='<option value="">— Default —</option>';
+    pols.forEach(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.name;ps.appendChild(o)});
+  }catch(e){log(`載入 policies 失敗: ${e.message}`,'err')}
+}
+
+async function loadPluginFamilies(){
+  const box=$('pluginFamilies');
+  if(box.dataset.loaded) return; // 只載入一次
+  try{
+    const d=await api('GET','/plugins/families');
+    const fams=d.families||d||[];
+    if(!Array.isArray(fams)){box.innerHTML='<div style="color:var(--t2)">無法載入</div>';return}
+
+    box.innerHTML=fams.sort((a,b)=>(a.name||'').localeCompare(b.name||'')).map(f=>
+      `<label class="chk-row"><input type="checkbox" value="${f.name}" data-fid="${f.id}"> ${f.name} <span style="color:var(--t2);font-size:10px">(${f.count||'?'})</span></label>`
+    ).join('');
+    box.dataset.loaded='1';
+  }catch(e){box.innerHTML=`<div style="color:var(--cr)">${e.message}</div>`}
+}
+
+async function createPolicy(){
+  const name=$('pName').value.trim();
+  if(!name){log('請輸入 Policy 名稱','err');return}
+
+  // 收集勾選的 plugin families
+  const checked=[...document.querySelectorAll('#pluginFamilies input:checked')].map(i=>i.value);
+
+  const body={
+    name,
+    description: $('pDesc').value||'',
+    template_name: $('pTmpl').value||'advanced',
+    port_range: $('pPorts').value||'default',
+    ping_method: $('pPing').value,
+    scan_web_apps: $('pWebApp').checked,
+  };
+
+  // Plugin families（有勾才送，沒勾 = 全部啟用）
+  if(checked.length>0) body.enabled_families=checked;
+
+  // SSH
+  const sshUser=$('pSshUser').value.trim();
+  if(sshUser){ body.ssh_username=sshUser; body.ssh_password=$('pSshPass').value; body.ssh_port=parseInt($('pSshPort').value)||22; }
+
+  // SMB
+  const smbUser=$('pSmbUser').value.trim();
+  if(smbUser){ body.smb_username=smbUser; body.smb_password=$('pSmbPass').value; body.smb_domain=$('pSmbDomain').value; }
+
+  // SNMP
+  const snmp=$('pSnmpComm').value.trim();
+  if(snmp) body.snmp_community=snmp;
+
+  log(`建立 Policy: ${name}...`);
+  try{
+    const r=await api('POST','/policies',body);
+    log(`Policy 建立成功 ✓ ID: ${r.policy_id}`,'ok');
+    loadPolicies();
+    // 清空表單
+    $('pName').value='';$('pDesc').value='';
+    $('pSshUser').value='';$('pSshPass').value='';
+    $('pSmbUser').value='';$('pSmbPass').value='';$('pSmbDomain').value='';
+    $('pSnmpComm').value='';
+    document.querySelectorAll('#pluginFamilies input:checked').forEach(i=>i.checked=false);
+  }catch(e){log(`建立失敗: ${e.message}`,'err')}
+}
+
+async function deletePolicy(id){
+  if(!confirm(`確定要刪除 Policy #${id}？`)) return;
+  try{
+    await api('DELETE',`/policies/${id}`);
+    log(`Policy #${id} 已刪除`,'ok');
+    loadPolicies();
+  }catch(e){log(`刪除失敗: ${e.message}`,'err')}
+}
+</script>
+</body>
+</html>
