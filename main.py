@@ -1,6 +1,6 @@
 """
-VA/PT Platform — FastAPI Backend
-使用官方 pyTenable 函式庫串接 Nessus
+EASM Platform — FastAPI Backend
+Nessus + Burp Suite Professional 整合
 """
 
 import os, io, csv, time, threading
@@ -13,14 +13,13 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel, Field
-
-from tenable.nessus import Nessus
 import requests as req_lib
 
+from tenable.nessus import Nessus
 
 load_dotenv()
 
-# ─── 設定（從 .env 讀取）──────────────────────────────
+# ─── Nessus 設定 ──────────────────────────────────────
 
 NESSUS_URL = f"https://{os.getenv('NESSUS_HOST', 'localhost')}:{os.getenv('NESSUS_PORT', '8834')}"
 NESSUS_ACCESS_KEY = os.getenv("NESSUS_ACCESS_KEY", "")
@@ -28,7 +27,13 @@ NESSUS_SECRET_KEY = os.getenv("NESSUS_SECRET_KEY", "")
 NESSUS_USERNAME = os.getenv("NESSUS_USERNAME", "")
 NESSUS_PASSWORD = os.getenv("NESSUS_PASSWORD", "")
 
+# ─── Burp Suite 設定 ──────────────────────────────────
+
+BURP_URL = os.getenv("BURP_URL", "http://127.0.0.1:1337")
+BURP_API_KEY = os.getenv("BURP_API_KEY", "")
+
 scan_tracker: dict = {}
+burp_tracker: dict = {}
 nessus: Optional[Nessus] = None
 
 
@@ -66,14 +71,14 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="VA/PT Platform", lifespan=lifespan)
+app = FastAPI(title="EASM Platform", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
 # ─── Request Model ─────────────────────────────────────
 
 class ScanRequest(BaseModel):
-    name: str = Field(..., examples=["Weekly VA/PT Scan"])
+    name: str = Field(..., examples=["Weekly EASM Scan"])
     targets: str = Field(..., examples=["192.168.1.0/24, 10.0.0.1"])
     port_range: Optional[str] = Field(None, examples=["1-1024, 3389"])
     template_name: Optional[str] = Field(None, examples=["basic"])
@@ -125,15 +130,12 @@ async def templates():
 async def policies():
     """列出所有掃描策略"""
     n = get_nessus()
-    try:
-        pols = n.policies.list()
-        pol_list = pols.get("policies", []) if isinstance(pols, dict) else pols
-        return {"policies": [
-            {"id": p.get("id"), "name": p.get("name"), "description": p.get("description", "")}
-            for p in pol_list
-        ]}
-    except Exception:
-        return {"policies":[]}
+    pols = n.policies.list()
+    pol_list = pols.get("policies", []) if isinstance(pols, dict) else pols
+    return {"policies": [
+        {"id": p.get("id"), "name": p.get("name"), "description": p.get("description", "")}
+        for p in pol_list
+    ]}
 
 
 @app.get("/api/policies/{policy_id}")
@@ -685,24 +687,14 @@ async def scan_results(sid: int):
 async def host_vulns(sid: int, hid: int):
     """特定主機的弱點"""
     n = get_nessus()
-    try:
-        url = f"{NESSUS_URL}/scans/{sid}/hosts/{hid}"
-        headers = {"X-ApiKeys": f"accessKey={NESSUS_ACCESS_KEY}; secretKey={NESSUS_SECRET_KEY};"}
-        r = req_lib.get(url, headers=headers, verify=False)
-        return r.json()
-    except Exception as e:
-        raise HTTPException(500, f"取得主機弱點失敗: {e}")
+    return n.scans.host_details(sid, hid)
+
 
 @app.get("/api/scans/{sid}/hosts/{hid}/plugins/{pid}")
 async def plugin_output(sid: int, hid: int, pid: int):
     """特定弱點的詳細輸出"""
-    try:
-        url = f"{NESSUS_URL}/scans/{sid}/hosts/{hid}/plugins/{pid}"
-        headers = {"X-ApiKeys": f"accessKey={NESSUS_ACCESS_KEY}; secretKey={NESSUS_SECRET_KEY};"}
-        r = req_lib.get(url, headers=headers, verify=False)
-        return r.json()
-    except Exception as e:
-        raise HTTPException(500, f"取得弱點詳情失敗: {e}")
+    n = get_nessus()
+    return n.scans.plugin_output(sid, hid, pid)
 
 
 # ─── 匯出報告 ─────────────────────────────────────────
@@ -732,36 +724,24 @@ async def export_csv(sid: int):
     )
 
 
-@app.get("/api/scans/{sid}/export/pdf")
-async def export_pdf(sid: int):
-    """匯出 PDF 報告"""
-    try:
-        url = f"{NESSUS_URL}/scans/{sid}/export"
-        headers = {"X-ApiKeys": f"accessKey={NESSUS_ACCESS_KEY}; secretKey={NESSUS_SECRET_KEY};",
-                    "Content-Type": "application/json"}
-        # 請求匯出 HTML（Nessus Pro 不支援直接 PDF，用 HTML 替代）
-        r = req_lib.post(url, headers=headers, json={"format": "html"}, verify=False)
-        token = r.json().get("token") or r.json().get("file")
+@app.get("/api/scans/{sid}/export/nessus")
+async def export_nessus(sid: int, format: str = "nessus"):
+    """
+    從 Nessus 匯出原始報告
+    format: nessus / csv / html / db
+    """
+    n = get_nessus()
+    fobj = io.BytesIO()
+    n.scans.export_scan(sid, fobj=fobj, format=format)
+    fobj.seek(0)
 
-        # 等待匯出完成
-        for _ in range(60):
-            s = req_lib.get(f"{NESSUS_URL}/scans/{sid}/export/{token}/status",
-                           headers=headers, verify=False)
-            if s.json().get("status") == "ready":
-                break
-            time.sleep(2)
+    ext = {"nessus": "nessus", "csv": "csv", "html": "html", "db": "db"}.get(format, "nessus")
+    media = {"csv": "text/csv", "html": "text/html"}.get(format, "application/octet-stream")
 
-        # 下載
-        dl = req_lib.get(f"{NESSUS_URL}/scans/{sid}/export/{token}/download",
-                         headers=headers, verify=False)
-
-        return StreamingResponse(
-            io.BytesIO(dl.content),
-            media_type="text/html",
-            headers={"Content-Disposition": f'attachment; filename="scan_{sid}_report.html"'}
-        )
-    except Exception as e:
-        raise HTTPException(500, f"匯出失敗: {e}")
+    return StreamingResponse(
+        fobj, media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="nessus_{sid}.{ext}"'},
+    )
 
 
 # ─── Scan History ─────────────────────────────────────
@@ -792,6 +772,198 @@ def _poll(sid: int):
     except Exception:
         if sid in scan_tracker:
             scan_tracker[sid]["status"] = "error"
+
+
+# ═══════════════════════════════════════════════════════
+# BURP SUITE PROFESSIONAL API
+# ═══════════════════════════════════════════════════════
+
+def burp_api(method, path, json_data=None):
+    """Burp Suite REST API helper"""
+    url = f"{BURP_URL}/v0.1{path}"
+    headers = {}
+    if BURP_API_KEY:
+        headers["Authorization"] = BURP_API_KEY
+    try:
+        r = req_lib.request(method, url, headers=headers, json=json_data, timeout=30)
+        r.raise_for_status()
+        if r.content:
+            return r.json()
+        return {}
+    except req_lib.exceptions.ConnectionError:
+        raise HTTPException(502, "無法連線 Burp Suite，請確認 REST API 已啟用")
+    except Exception as e:
+        raise HTTPException(500, f"Burp API 錯誤: {e}")
+
+
+@app.get("/api/burp/health")
+async def burp_health():
+    """Burp Suite 連線狀態"""
+    try:
+        data = burp_api("GET", "/version")
+        return {"status": "ok", "burp_connected": True, "version": data}
+    except:
+        return {"status": "ok", "burp_connected": False}
+
+
+# ─── Burp 掃描管理 ────────────────────────────────────
+
+class BurpScanRequest(BaseModel):
+    urls: list[str] = Field(..., examples=[["https://example.com", "https://api.example.com"]])
+    name: Optional[str] = Field(None, examples=["Web App Scan"])
+
+
+@app.post("/api/burp/scans")
+async def burp_create_scan(req: BurpScanRequest, bg: BackgroundTasks):
+    """建立並啟動 Burp 掃描"""
+    try:
+        # Burp Pro REST API: POST /v0.1/scan
+        payload = {"urls": req.urls}
+        data = burp_api("POST", "/scan", json_data=payload)
+        task_id = data.get("task_id")
+
+        if task_id:
+            burp_tracker[task_id] = {
+                "name": req.name or ", ".join(req.urls),
+                "urls": req.urls,
+                "status": "running",
+                "engine": "burp",
+                "created_at": datetime.utcnow().isoformat(),
+            }
+            bg.add_task(_poll_burp, task_id)
+
+        return {"task_id": task_id, "status": "launched", "engine": "burp"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Burp 掃描失敗: {e}")
+
+
+@app.get("/api/burp/scans/{task_id}")
+async def burp_scan_status(task_id: str):
+    """取得 Burp 掃描狀態與進度"""
+    try:
+        data = burp_api("GET", f"/scan/{task_id}")
+        tracker = burp_tracker.get(task_id, {})
+        return {
+            "task_id": task_id,
+            "status": data.get("scan_status"),
+            "scan_metrics": data.get("scan_metrics"),
+            "issues": data.get("issue_events", []),
+            **tracker,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"取得狀態失敗: {e}")
+
+
+@app.get("/api/burp/scans/{task_id}/results")
+async def burp_scan_results(task_id: str):
+    """取得 Burp 掃描結果（結構化，Dashboard 用）"""
+    try:
+        data = burp_api("GET", f"/scan/{task_id}")
+
+        issues = data.get("issue_events", [])
+        sev_map = {"high": "high", "medium": "medium", "low": "low", "info": "info", "information": "info"}
+        sev_summary = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
+
+        vuln_list = []
+        for issue in issues:
+            detail = issue.get("issue", {})
+            sev = sev_map.get(detail.get("severity", "").lower(), "info")
+            sev_summary[sev] += 1
+            vuln_list.append({
+                "name": detail.get("name", ""),
+                "severity": sev,
+                "confidence": detail.get("confidence", ""),
+                "path": detail.get("path", ""),
+                "origin": detail.get("origin", ""),
+                "type_index": detail.get("type_index", ""),
+                "description": detail.get("description", ""),
+                "remediation": detail.get("remediation", ""),
+            })
+
+        # 按嚴重度排序
+        sev_order = {"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0}
+        vuln_list.sort(key=lambda x: sev_order.get(x["severity"], 0), reverse=True)
+
+        tracker = burp_tracker.get(task_id, {})
+        return {
+            "scan_info": {
+                "name": tracker.get("name", f"Burp Scan {task_id}"),
+                "status": data.get("scan_status", "unknown"),
+                "engine": "burp",
+                "urls": tracker.get("urls", []),
+                "metrics": data.get("scan_metrics"),
+            },
+            "vulnerabilities": vuln_list,
+            "severity_summary": sev_summary,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"取得結果失敗: {e}")
+
+
+@app.get("/api/burp/scans/{task_id}/export/html")
+async def burp_export_html(task_id: str):
+    """匯出 Burp 掃描報告（HTML）"""
+    try:
+        url = f"{BURP_URL}/v0.1/scan/{task_id}/report?report_type=HTML"
+        headers = {}
+        if BURP_API_KEY:
+            headers["Authorization"] = BURP_API_KEY
+        r = req_lib.get(url, headers=headers, timeout=60)
+        r.raise_for_status()
+        return StreamingResponse(
+            io.BytesIO(r.content),
+            media_type="text/html",
+            headers={"Content-Disposition": f'attachment; filename="burp_scan_{task_id}.html"'},
+        )
+    except Exception as e:
+        raise HTTPException(500, f"匯出失敗: {e}")
+
+
+@app.get("/api/burp/scans/{task_id}/export/xml")
+async def burp_export_xml(task_id: str):
+    """匯出 Burp 掃描報告（XML）"""
+    try:
+        url = f"{BURP_URL}/v0.1/scan/{task_id}/report?report_type=XML"
+        headers = {}
+        if BURP_API_KEY:
+            headers["Authorization"] = BURP_API_KEY
+        r = req_lib.get(url, headers=headers, timeout=60)
+        r.raise_for_status()
+        return StreamingResponse(
+            io.BytesIO(r.content),
+            media_type="application/xml",
+            headers={"Content-Disposition": f'attachment; filename="burp_scan_{task_id}.xml"'},
+        )
+    except Exception as e:
+        raise HTTPException(500, f"匯出失敗: {e}")
+
+
+# ─── Burp 背景輪詢 ────────────────────────────────────
+
+def _poll_burp(task_id: str):
+    try:
+        for _ in range(720):  # 最多 3 小時
+            data = burp_api("GET", f"/scan/{task_id}")
+            status = data.get("scan_status", "unknown")
+            if task_id in burp_tracker:
+                burp_tracker[task_id]["status"] = status
+                metrics = data.get("scan_metrics", {})
+                if metrics:
+                    burp_tracker[task_id]["progress"] = metrics.get("crawl_and_audit_progress", 0)
+            if status in ("succeeded", "failed", "cancelled"):
+                if task_id in burp_tracker:
+                    burp_tracker[task_id]["completed_at"] = datetime.utcnow().isoformat()
+                break
+            time.sleep(15)
+    except Exception:
+        if task_id in burp_tracker:
+            burp_tracker[task_id]["status"] = "error"
 
 
 # ─── 首頁（serve Dashboard）────────────────────────────
