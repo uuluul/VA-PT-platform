@@ -1,5 +1,5 @@
 """
-EASM Platform — FastAPI Backend
+VA/PT Platform — FastAPI Backend
 使用官方 pyTenable 函式庫串接 Nessus
 """
 
@@ -66,14 +66,14 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="EASM Platform", lifespan=lifespan)
+app = FastAPI(title="VA/PT Platform", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
 # ─── Request Model ─────────────────────────────────────
 
 class ScanRequest(BaseModel):
-    name: str = Field(..., examples=["Weekly EASM Scan"])
+    name: str = Field(..., examples=["Weekly VA/PT Scan"])
     targets: str = Field(..., examples=["192.168.1.0/24, 10.0.0.1"])
     port_range: Optional[str] = Field(None, examples=["1-1024, 3389"])
     template_name: Optional[str] = Field(None, examples=["basic"])
