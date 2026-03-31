@@ -123,12 +123,15 @@ async def templates():
 async def policies():
     """列出所有掃描策略"""
     n = get_nessus()
-    pols = n.policies.list()
-    pol_list = pols.get("policies", []) if isinstance(pols, dict) else pols
-    return {"policies": [
-        {"id": p.get("id"), "name": p.get("name"), "description": p.get("description", "")}
-        for p in pol_list
-    ]}
+    try:
+        pols = n.policies.list()
+        pol_list = pols.get("policies", []) if isinstance(pols, dict) else pols
+        return {"policies": [
+            {"id": p.get("id"), "name": p.get("name"), "description": p.get("description", "")}
+            for p in pol_list
+        ]}
+    except Exception:
+        return {"policies":[]}
 
 
 @app.get("/api/policies/{policy_id}")
