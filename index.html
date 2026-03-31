@@ -87,7 +87,7 @@
 
 <header>
   <div class="logo">E</div>
-  <h1>VA/PT Scanner</h1>
+  <h1>EASM Scanner</h1>
   <span class="sub" id="connStatus">● Connecting...</span>
 </header>
 
@@ -190,9 +190,11 @@
   </div>
 
   <!-- ═══ STATUS ═══ -->
-  <div style="display:flex;gap:10px;align-items:center">
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
     <div class="sb" style="flex:1"><div class="p p-idle" id="sDot"></div><span id="sTxt">Idle</span></div>
-    <button class="b bo" onclick="loadDemo()" style="white-space:nowrap">📋 Load Demo Data</button>
+    <input id="loadSid" type="text" placeholder="Scan ID" style="width:100px;padding:9px 13px">
+    <button class="b bp" onclick="loadBySid()" style="white-space:nowrap">📥 Load Results</button>
+    <button class="b bo" onclick="loadDemo()" style="white-space:nowrap">📋 Demo Data</button>
   </div>
 
   <!-- ═══ LOG ═══ -->
@@ -579,6 +581,24 @@ function dlCSV(){
 function dlNessus(){
   if(curScan) return window.open(`${API}/scans/${curScan}/export/nessus`);
   log('Nessus 原始報告需要真實掃描資料','err');
+}
+
+// ─── Load by Scan ID ──────────────────
+async function loadBySid(){
+  const sid=$('loadSid').value.trim();
+  if(!sid){log('請輸入 Scan ID','err');return}
+  curScan=parseInt(sid);
+  stat(`Loading scan #${sid}...`,'running');
+  log(`載入掃描 #${sid} 的結果...`);
+  try{
+    resData=await api('GET',`/scans/${sid}/results`);
+    render(resData);
+    stat(`Scan #${sid} — ${resData.scan_info?.name||'loaded'}`,'done');
+    log(`掃描 #${sid} 結果載入成功 ✓ (${resData.hosts?.length||0} hosts)`,'ok');
+  }catch(e){
+    log(`載入失敗: ${e.message}`,'err');
+    stat('Load failed','error');
+  }
 }
 
 // ─── Load Demo Data ───────────────────
