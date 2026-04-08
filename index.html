@@ -64,6 +64,20 @@
   .chk-row input{width:auto;accent-color:var(--ac)}
   .log{background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:14px;max-height:140px;overflow-y:auto;font-family:var(--mono);font-size:12px;color:var(--t2);line-height:1.8}
   .log .ts{color:#4A5568}.log .ok{color:var(--ok)}.log .er{color:var(--cr)}
+  /* Preset cards */
+  .preset-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:4px}
+  .preset-card{padding:12px 16px;border-radius:10px;border:2px solid var(--bd);background:var(--s2);cursor:pointer;transition:all .2s;text-align:center}
+  .preset-card:hover{border-color:var(--ac);background:var(--ag)}
+  .preset-card.active{border-color:var(--ac);background:var(--ag)}
+  .preset-card .pi{font-size:22px;margin-bottom:4px}
+  .preset-card .pt{font-size:13px;font-weight:700;color:var(--tx)}
+  .preset-card .pd{font-size:12px;color:var(--t2);margin-top:4px;font-family:var(--mono)}
+  .section-hdr{font-size:12px;font-weight:700;color:var(--ac);letter-spacing:1px;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid var(--bd)}
+  .cfg-section{margin-top:20px;padding-top:16px;border-top:1px solid var(--bd)}
+  .radio-group{display:flex;gap:8px;flex-wrap:wrap}
+  .radio-btn{padding:7px 14px;border-radius:7px;border:1px solid var(--bd);background:var(--s2);color:var(--t2);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--mono);transition:all .2s}
+  .radio-btn:hover{border-color:var(--t2);color:var(--tx)}
+  .radio-btn.sel{border-color:var(--ac);background:var(--ag);color:var(--ac)}
   ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--bd);border-radius:3px}
 </style>
 </head>
@@ -78,6 +92,8 @@
   <button class="tab" onclick="switchTab('burp',this)">Burp Suite</button>
 </nav>
 <div class="wrap">
+
+<!-- ═══ NESSUS TAB ═══ -->
 <div id="tabNessus">
   <div style="display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--bd);padding-bottom:0">
     <button class="subtab subtab-active" onclick="switchSubTab('scan',this)">Scan</button>
@@ -111,8 +127,14 @@
   <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
     <div class="sb" style="flex:1"><div class="p p-idle" id="sDot"></div><span id="sTxt">Idle</span></div>
     <input id="loadSid" type="text" placeholder="Scan ID" style="width:100px;padding:9px 13px">
-    <button class="b bp" onclick="loadBySid()" style="white-space:nowrap">📥 Load Results</button>
-    <button class="b bo" onclick="loadDemo()" style="white-space:nowrap">📋 Demo Data</button>
+    <button class="b bp" onclick="loadBySid()" style="white-space:nowrap">Load Results</button>
+    <button class="b bo" onclick="loadDemo()" style="white-space:nowrap">Demo Data</button>
+  </div>
+  <div class="c"><div class="ch"><div class="d" style="background:var(--ac)"></div><h2>SCAN HISTORY</h2><button class="b bo" style="padding:4px 12px;font-size:11px;margin-left:auto" onclick="loadNessusList()">↻ Refresh</button></div>
+    <div class="cb" style="padding:10px">
+      <div style="overflow-x:auto"><table><thead><tr><th>Scan ID</th><th>Name</th><th>Targets</th><th>Status</th><th>Last Modified</th><th></th></tr></thead><tbody id="nHistBody"><tr><td colspan="6" style="color:var(--t2);text-align:center">Loading...</td></tr></tbody></table></div>
+      <div id="nHistPager"></div>
+    </div>
   </div>
   <div class="c"><div class="ch"><div class="d" style="background:var(--t2)"></div><h2>LOG</h2></div><div class="cb" style="padding:10px"><div class="log" id="logBox"></div></div></div>
   <div class="c hid" id="resCard"><div class="ch"><div class="d" style="background:var(--ok)"></div><h2>RESULTS</h2></div>
@@ -120,7 +142,7 @@
       <h3 style="font-size:12px;font-weight:700;color:var(--t2);margin-bottom:8px;letter-spacing:1px">HOSTS（點擊查看弱點）</h3>
       <div style="overflow-x:auto"><table><thead><tr><th>Host</th><th>Critical</th><th>High</th><th>Medium</th><th>Low</th><th>Info</th></tr></thead><tbody id="hBody"></tbody></table></div>
       <div class="hid" id="hostVulnCard" style="margin-top:20px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px"><h3 style="font-size:12px;font-weight:700;color:var(--ac);letter-spacing:1px" id="hostVulnTitle">VULNERABILITIES — ?</h3><button class="b bo" style="padding:4px 12px;font-size:11px" onclick="closeHostVulns()">✕ Close</button></div><div style="overflow-x:auto"><table><thead><tr><th>Plugin ID</th><th>Name</th><th>Severity</th><th>Count</th><th>Family</th></tr></thead><tbody id="vBody"></tbody></table></div></div>
-      <div class="br" style="margin-top:16px"><button class="b bo" onclick="dlCSV()">⬇ Export CSV</button><button class="b bp" onclick="dlNessus()">⬇ Export PDF Report</button></div>
+      <div class="br" style="margin-top:16px"><button class="b bo" onclick="dlCSV()">⬇ Export CSV</button><button class="b bp" onclick="dlNessus()">⬇ Export .nessus</button></div>
     </div></div>
   </div>
   <div id="subPolicy" class="hid">
@@ -138,25 +160,260 @@
       </div></div>
   </div>
 </div>
+
+<!-- ═══ BURP TAB ═══ -->
 <div id="tabBurp" class="hid">
-  <div class="c"><div class="ch"><div class="d" style="background:var(--hi)"></div><h2>BURP SUITE — WEB APPLICATION SCAN</h2></div>
-    <div class="cb"><div style="display:flex;align-items:center;gap:10px;margin-bottom:16px"><span id="burpStatus" style="font-size:13px;color:var(--t2)">● Checking...</span><button class="b bo" style="padding:5px 12px;font-size:11px" onclick="checkBurp()">Refresh</button></div>
-      <div class="fg"><div class="f"><label>Target URLs（每行一個）</label><textarea id="bUrls" rows="3" placeholder="https://example.com&#10;https://api.example.com"></textarea></div><div><label>Scan Name（可選）</label><input id="bName" placeholder="e.g. Web App Scan"></div></div>
-      <div class="br"><button class="b bp" onclick="burpScan()">▶ Launch Burp Scan</button></div></div></div>
-  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><div class="sb" style="flex:1"><div class="p p-idle" id="bDot"></div><span id="bTxt">Idle</span></div><input id="bLoadId" type="text" placeholder="Task ID" style="width:140px;padding:9px 13px"><button class="b bp" onclick="loadBurpResults()" style="white-space:nowrap">📥 Load Results</button></div>
-  <div class="c"><div class="ch"><div class="d" style="background:var(--t2)"></div><h2>BURP LOG</h2></div><div class="cb" style="padding:10px"><div class="log" id="burpLog"></div></div></div>
-  <div class="c hid" id="burpResCard"><div class="ch"><div class="d" style="background:var(--ok)"></div><h2>BURP RESULTS</h2></div>
-    <div class="cb"><div class="sr" id="bSevRow"></div>
-      <h3 style="font-size:12px;font-weight:700;color:var(--t2);margin-bottom:8px;letter-spacing:1px">VULNERABILITIES</h3>
-      <div style="overflow-x:auto"><table><thead><tr><th>Name</th><th>Severity</th><th>Confidence</th><th>Path</th><th>Origin</th></tr></thead><tbody id="bVBody"></tbody></table></div>
-      <div class="br" style="margin-top:16px"><button class="b bo" onclick="burpExportHTML()">⬇ Export HTML</button><button class="b bp" onclick="burpExportXML()">⬇ Export XML</button></div>
-    </div></div>
-</div>
-</div>
+  <!-- Burp 子分頁 -->
+  <div style="display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--bd);padding-bottom:0">
+    <button class="subtab subtab-active" onclick="switchBurpSubTab('scan',this)">Scan</button>
+    <button class="subtab" onclick="switchBurpSubTab('config',this)">Scan Config</button>
+  </div>
+
+  <!-- ── Scan 子分頁 ── -->
+  <div id="bSubScan">
+    <div class="c">
+      <div class="ch"><div class="d" style="background:var(--hi)"></div><h2>BURP SUITE — WEB APPLICATION SCAN</h2></div>
+      <div class="cb">
+        <!-- 連線狀態 -->
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+          <span id="burpStatus" style="font-size:13px;color:var(--t2)">● Checking...</span>
+          <button class="b bo" style="padding:5px 12px;font-size:11px" onclick="checkBurp()">Refresh</button>
+        </div>
+
+        <!-- Target URLs -->
+        <div class="fg">
+          <div class="f"><label>Target URLs（每行一個）</label><textarea id="bUrls" rows="3" placeholder="http://192.168.1.10&#10;http://192.168.1.20:8080"></textarea></div>
+          <div class="f"><label>Scan Name（可選）</label><input id="bName" placeholder="e.g. Internal Web App Scan"></div>
+        </div>
+
+        <!-- Preset 選擇 -->
+        <div style="margin-top:18px">
+          <label style="margin-bottom:10px">掃描模板</label>
+          <div class="preset-grid">
+            <div class="preset-card active" onclick="selectPreset('quick',this)">
+              <div class="pt">Quick</div>
+              <div class="pd">最快速爬蟲 · 僅 Extension 插件檢查</div>
+              <div style="margin-top:10px;text-align:left;font-size:13px;color:var(--t2);font-family:var(--mono);line-height:1.8">
+                <div>• Crawl：Fastest（速度優先）</div>
+                <div>• Audit：Extensions Only</div>
+                <div>• 適合：快速初步摸底</div>
+              </div>
+            </div>
+            <div class="preset-card" onclick="selectPreset('standard',this)">
+              <div class="pt">Standard</div>
+              <div class="pd">平衡速度與覆蓋率 · 推薦日常使用</div>
+              <div style="margin-top:10px;text-align:left;font-size:13px;color:var(--t2);font-family:var(--mono);line-height:1.8">
+                <div>• Crawl：Fast</div>
+                <div>• Audit：All（排除 JS 分析）</div>
+                <div>• 適合：一般 Web App 滲透測試</div>
+              </div>
+            </div>
+            <div class="preset-card" onclick="selectPreset('deep',this)">
+              <div class="pt">Deep</div>
+              <div class="pd">最完整爬蟲 · 深度稽核 · 耗時較長</div>
+              <div style="margin-top:10px;text-align:left;font-size:13px;color:var(--t2);font-family:var(--mono);line-height:1.8">
+                <div>• Crawl：Most Complete</div>
+                <div>• Audit：All（含 JS 分析）</div>
+                <div>• Coverage：Thorough</div>
+                <div>• 適合：完整安全評估報告</div>
+              </div>
+            </div>
+          </div>
+          <div style="margin-top:8px;text-align:right">
+            <button class="bo b" style="padding:5px 14px;font-size:11px" onclick="selectPreset('custom',null)">⚙ 使用 Scan Config 自訂設定</button>
+          </div>
+        </div>
+
+        <input type="hidden" id="bPreset" value="quick">
+        <div class="br" style="margin-top:16px">
+          <button class="b bp" id="btnBurpGo" onclick="burpScan()">▶ Launch Burp Scan</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 狀態列 -->
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <div class="sb" style="flex:1"><div class="p p-idle" id="bDot"></div><span id="bTxt">Idle</span></div>
+      <input id="bLoadId" type="text" placeholder="Task ID" style="width:140px;padding:9px 13px">
+      <button class="b bp" onclick="loadBurpResults()" style="white-space:nowrap">Load Results</button>
+    </div>
+
+    <!-- Burp History -->
+    <div class="c"><div class="ch"><div class="d" style="background:var(--ac)"></div><h2>SCAN HISTORY</h2><button class="b bo" style="padding:4px 12px;font-size:11px;margin-left:auto" onclick="loadBurpList()">↻ Refresh</button></div>
+      <div class="cb" style="padding:10px">
+        <div style="overflow-x:auto"><table><thead><tr><th>Task ID</th><th>Name</th><th>URLs</th><th>Preset</th><th>Status</th><th></th></tr></thead><tbody id="bHistBody"><tr><td colspan="6" style="color:var(--t2);text-align:center">尚無掃描記錄</td></tr></tbody></table></div>
+        <div id="bHistPager"></div>
+      </div>
+    </div>
+
+    <!-- Log -->
+    <div class="c">
+      <div class="ch"><div class="d" style="background:var(--t2)"></div><h2>BURP LOG</h2></div>
+      <div class="cb" style="padding:10px"><div class="log" id="burpLog"></div></div>
+    </div>
+
+    <!-- Results -->
+    <div class="c hid" id="burpResCard">
+      <div class="ch"><div class="d" style="background:var(--ok)"></div><h2>BURP RESULTS</h2></div>
+      <div class="cb">
+        <div class="sr" id="bSevRow"></div>
+        <h3 style="font-size:12px;font-weight:700;color:var(--t2);margin-bottom:8px;letter-spacing:1px">VULNERABILITIES</h3>
+        <div style="overflow-x:auto"><table><thead><tr><th>Name</th><th>Severity</th><th>Confidence</th><th>Path</th><th>Origin</th></tr></thead><tbody id="bVBody"></tbody></table></div>
+        <div class="br" style="margin-top:16px">
+          <button class="b bo" disabled title="Burp Pro 不支援一鍵匯出，請在 Burp GUI 手動產生報告" style="opacity:0.4;cursor:not-allowed">⬇ Export HTML</button>
+          <button class="b bo" disabled title="Burp Pro 不支援一鍵匯出，請在 Burp GUI 手動產生報告" style="opacity:0.4;cursor:not-allowed">⬇ Export XML</button>
+          <p style="font-size:11px;color:var(--t2);margin-top:8px">報告匯出請至 Burp Suite GUI 下載</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Scan Config 子分頁 ── -->
+  <div id="bSubConfig" class="hid">
+    <div class="c">
+      <div class="ch"><div class="d" style="background:var(--ac)"></div><h2>SCAN CONFIG — 進階掃描設定</h2></div>
+      <div class="cb">
+        <p style="font-size:13px;color:var(--t2);margin-bottom:20px;line-height:1.6">對應 Burp Suite Pro 的完整掃描設定，選「自訂設定」時生效。</p>
+
+        <!-- ① Scan Type -->
+        <div class="section-hdr">① SCAN TYPE — 掃描類型</div>
+        <div class="radio-group" id="rScanType" style="flex-direction:column;gap:8px">
+          <div class="radio-btn sel" style="text-align:left" onclick="selectRadio('rScanType','crawl_and_audit',this)">
+            Crawl and audit
+            <span style="display:block;font-size:12px;color:var(--t2);margin-top:3px">Maps the attack surface and identifies vulnerabilities. Scans the web application and any detected APIs.</span>
+          </div>
+          <div class="radio-btn" style="text-align:left" onclick="selectRadio('rScanType','crawl',this)">
+            Crawl
+            <span style="display:block;font-size:12px;color:var(--t2);margin-top:3px">Maps the attack surface of the web application and any detected APIs.</span>
+          </div>
+          <div class="radio-btn" style="text-align:left" onclick="selectRadio('rScanType','api_only',this)">
+            API-only scan
+            <span style="display:block;font-size:12px;color:var(--t2);margin-top:3px">Offers additional configuration options for API scanning.</span>
+          </div>
+        </div>
+        <input type="hidden" id="cfgScanType" value="crawl_and_audit">
+
+        <!-- ② Scan Details -->
+        <div class="cfg-section">
+          <div class="section-hdr">② SCAN DETAILS — 掃描細節</div>
+
+          <label style="margin-bottom:8px">Protocol Settings</label>
+          <div class="radio-group" id="rProtocol">
+            <div class="radio-btn sel" onclick="selectRadio('rProtocol','http_and_https',this)">Scan using HTTP & HTTPS</div>
+            <div class="radio-btn" onclick="selectRadio('rProtocol','specified',this)">Scan using my specified protocols</div>
+          </div>
+          <input type="hidden" id="cfgProtocol" value="http_and_https">
+
+          <div style="margin-top:14px">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;text-transform:none;letter-spacing:0">
+              <input type="checkbox" id="cfgIsolated" style="width:auto;accent-color:var(--ac)">
+              <span style="color:var(--tx)">Run isolated scan</span>
+              <span style="color:var(--t2);font-size:12px">（結果不會出現在 Target site map 或 Issue activity log）</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- ③ Scan Configuration -->
+        <div class="cfg-section">
+          <div class="section-hdr">③ SCAN CONFIGURATION — 掃描模式</div>
+          <div class="radio-group" id="rScanMode" style="flex-direction:column;gap:6px">
+            <div class="radio-btn sel" style="text-align:left" onclick="selectRadio('rScanMode','Crawl and Audit - Balanced',this)">
+              Crawl and Audit — Balanced<span style="display:block;font-size:11px;color:var(--t2);margin-top:2px">平衡速度與覆蓋率，一般測試推薦</span>
+            </div>
+            <div class="radio-btn" style="text-align:left" onclick="selectRadio('rScanMode','Crawl and Audit - Fast',this)">
+              Crawl and Audit — Fast<span style="display:block;font-size:11px;color:var(--t2);margin-top:2px">快速掃描，犧牲部分覆蓋率</span>
+            </div>
+            <div class="radio-btn" style="text-align:left" onclick="selectRadio('rScanMode','Crawl and Audit - Thorough',this)">
+              Crawl and Audit — Thorough<span style="display:block;font-size:11px;color:var(--t2);margin-top:2px">深度掃描，覆蓋率最高，耗時長</span>
+            </div>
+            <div class="radio-btn" style="text-align:left" onclick="selectRadio('rScanMode','Crawl - Fast',this)">
+              Crawl — Fast<span style="display:block;font-size:11px;color:var(--t2);margin-top:2px">僅快速爬蟲，不稽核</span>
+            </div>
+            <div class="radio-btn" style="text-align:left" onclick="selectRadio('rScanMode','Crawl - Thorough',this)">
+              Crawl — Thorough<span style="display:block;font-size:11px;color:var(--t2);margin-top:2px">深度爬蟲，不稽核</span>
+            </div>
+          </div>
+          <input type="hidden" id="cfgScanMode" value="Crawl and Audit - Balanced">
+
+          <!-- URL Scope -->
+          <div style="margin-top:18px">
+            <label style="margin-bottom:8px">URL Scope</label>
+            <div class="fg">
+              <div class="f">
+                <label>Include（每行一個，留空 = 與 Target URLs 相同）</label>
+                <textarea id="cfgScopeInclude" rows="2" placeholder="http://192.168.1.10/app&#10;http://192.168.1.10/api"></textarea>
+              </div>
+              <div class="f">
+                <label>Exclude（每行一個，可留空）</label>
+                <textarea id="cfgScopeExclude" rows="2" placeholder="http://192.168.1.10/logout&#10;http://192.168.1.10/admin"></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ④ Application Login -->
+        <div class="cfg-section">
+          <div class="section-hdr">④ APPLICATION LOGIN — 應用程式認證</div>
+          <div class="radio-group" id="rLoginType" style="margin-bottom:14px">
+            <div class="radio-btn sel" onclick="selectRadio('rLoginType','credentials',this);toggleLoginType('credentials')">Use login credentials (username and password)</div>
+            <div class="radio-btn" onclick="selectRadio('rLoginType','none',this);toggleLoginType('none')">不設定認證</div>
+          </div>
+          <input type="hidden" id="cfgLoginType" value="credentials">
+          <div id="loginCredsBox" class="fg">
+            <div class="f"><label>Login URL（可留空，Burp 會自動偵測）</label><input id="cfgLoginUrl" placeholder="http://192.168.1.10/login"></div>
+            <div><label>Username</label><input id="cfgUsername" placeholder="admin"></div>
+            <div><label>Password</label><input id="cfgPassword" type="password" placeholder="••••••"></div>
+          </div>
+        </div>
+
+        <!-- ⑤ Resource Pool -->
+        <div class="cfg-section">
+          <div class="section-hdr">⑤ RESOURCE POOL — 資源池</div>
+          <div class="radio-group" id="rResPool" style="margin-bottom:14px">
+            <div class="radio-btn sel" onclick="selectRadio('rResPool','default',this);toggleResPool('default')">Use Default resource pool（10 concurrent requests）</div>
+            <div class="radio-btn" onclick="selectRadio('rResPool','custom',this);toggleResPool('custom')">Create new resource pool</div>
+          </div>
+          <input type="hidden" id="cfgResPool" value="default">
+          <div id="resPoolBox" class="hid">
+            <div class="fg">
+              <div><label>Pool Name</label><input id="cfgPoolName" placeholder="My Resource Pool"></div>
+              <div><label>Max Concurrent Requests</label><input id="cfgPoolConcurrent" type="number" placeholder="10" min="1" max="50"></div>
+              <div><label>Delay Between Requests (ms)</label><input id="cfgPoolDelay" type="number" placeholder="0" min="0"></div>
+              <div>
+                <label>Delay Type</label>
+                <select id="cfgPoolDelayType">
+                  <option value="fixed">Fixed</option>
+                  <option value="random">With random variations</option>
+                  <option value="increment">Increase delay in increments</option>
+                </select>
+              </div>
+            </div>
+            <div style="margin-top:10px">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;text-transform:none;letter-spacing:0">
+                <input type="checkbox" id="cfgAutoThrottle" style="width:auto;accent-color:var(--ac)">
+                <span style="color:var(--tx)">Automatic throttling</span>
+                <span style="color:var(--t2);font-size:12px">（偵測到 429/503 時自動降速）</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="br" style="margin-top:24px">
+          <button class="b bp" onclick="saveConfig()">儲存設定</button>
+          <span id="cfgSaved" style="font-size:12px;color:var(--ok);display:none">✓ 已儲存</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- end tabBurp -->
+</div><!-- end wrap -->
+
 <script>
 const API=window.location.origin+'/api';
 const $=id=>document.getElementById(id);
 let curScan=null,pollId=null,resData=null;
+
 function log(m,t=''){const b=$('logBox'),ts=new Date().toLocaleTimeString(),cl=t==='ok'?'ok':t==='err'?'er':'';b.innerHTML+=`<div><span class="ts">[${ts}]</span> <span class="${cl}">${m}</span></div>`;b.scrollTop=b.scrollHeight}
 function stat(t,s='idle'){$('sTxt').textContent=t;const d=$('sDot');d.className='p';d.classList.add(s==='running'?'p-run':s==='done'?'p-ok':s==='error'?'p-err':'p-idle')}
 async function api(method,path,body){const o={method,headers:{'Content-Type':'application/json'}};if(body)o.body=JSON.stringify(body);const r=await fetch(API+path,o);if(!r.ok)throw new Error(`HTTP ${r.status}`);const t=await r.text();return t?JSON.parse(t):{}}
@@ -171,13 +428,143 @@ async function init(){
     const po=await api('GET','/policies');const ps=$('sPol');ps.innerHTML='<option value="">— Default —</option>';
     (po.policies||[]).forEach(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.name;ps.appendChild(o)});
     log(`${po.policies?.length||0} policies loaded`,'ok');
+    loadNessusList();
   }catch(e){$('connStatus').innerHTML='<span style="color:var(--cr)">● API Error</span>';log(`初始化失敗: ${e.message}`,'err')}
 }
 init();
 
-function switchTab(tab,btn){$('tabNessus').classList.add('hid');$('tabBurp').classList.add('hid');if(tab==='nessus')$('tabNessus').classList.remove('hid');if(tab==='burp'){$('tabBurp').classList.remove('hid');checkBurp()}document.querySelectorAll('.tab').forEach(t=>t.classList.remove('tab-active'));btn.classList.add('tab-active')}
+// ── 分頁共用 ──
+const PAGE_SIZE = 20;
+let nPage = 1, nAllScans = [];
+let bPage = 1, bAllScans = [];
+
+function renderPager(page, total, onPage, containerId) {
+  const pages = Math.ceil(total / PAGE_SIZE) || 1;
+  if (pages <= 1) return '';
+  const btns = [];
+  btns.push(`<button class="b bo" style="padding:3px 10px;font-size:11px" onclick="${onPage}(${page-1})" ${page<=1?'disabled':''}>‹ 上一頁</button>`);
+  // 最多顯示 5 個頁碼
+  let start = Math.max(1, page-2), end = Math.min(pages, start+4);
+  if (end-start < 4) start = Math.max(1, end-4);
+  for (let i=start;i<=end;i++) {
+    btns.push(`<button class="b ${i===page?'bp':'bo'}" style="padding:3px 10px;font-size:11px;min-width:32px" onclick="${onPage}(${i})">${i}</button>`);
+  }
+  btns.push(`<button class="b bo" style="padding:3px 10px;font-size:11px" onclick="${onPage}(${page+1})" ${page>=pages?'disabled':''}>下一頁 ›</button>`);
+  btns.push(`<span style="font-size:12px;color:var(--t2);font-family:var(--mono)">${page} / ${pages} 頁（共 ${total} 筆）</span>`);
+  return `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--bd)">${btns.join('')}</div>`;
+}
+
+async function loadNessusList(page=1){
+  nPage=page;
+  try{
+    const d=await api('GET','/scans');
+    nAllScans=(d.scans||[]).sort((a,b)=>(b.last_modification_date||0)-(a.last_modification_date||0));
+    renderNessusPage(page);
+  }catch(e){$('nHistBody').innerHTML=`<tr><td colspan="6" style="color:var(--cr);text-align:center">${e.message}</td></tr>`;$('nHistPager').innerHTML=''}
+}
+
+function renderNessusPage(page){
+  nPage=page;
+  const sColors={completed:'var(--ok)',running:'var(--ac)',canceled:'var(--t2)',aborted:'var(--cr)'};
+  const slice=nAllScans.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
+  $('nHistBody').innerHTML=slice.length?slice.map(s=>{
+    const sc=sColors[s.status]||'var(--t2)';
+    const dt=s.last_modification_date?new Date(s.last_modification_date*1000).toLocaleString('zh-TW',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
+    return`<tr>
+      <td style="color:var(--ac);font-weight:700">${s.id}</td>
+      <td style="font-family:var(--sans);font-weight:500">${s.name||'—'}</td>
+      <td style="color:var(--t2);font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${s.targets||''}">${s.targets||'—'}</td>
+      <td><span class="st" style="background:${sc}22;color:${sc}">${s.status||'—'}</span></td>
+      <td style="color:var(--t2);font-size:11px">${dt}</td>
+      <td><button class="b bo" style="padding:3px 10px;font-size:11px" onclick="quickLoadNessus(${s.id})">Load</button></td>
+    </tr>`}).join('')
+  :'<tr><td colspan="6" style="color:var(--t2);text-align:center">尚無掃描記錄</td></tr>';
+  $('nHistPager').innerHTML=renderPager(page, nAllScans.length, 'renderNessusPage', 'nHistPager');
+}
+
+function quickLoadNessus(sid){$('loadSid').value=sid;loadBySid()}
+
+async function loadBurpList(page=1){
+  bPage=page;
+  try{
+    const d=await api('GET','/burp/scans/list');
+    bAllScans=(d.scans||[]).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+    renderBurpPage(page);
+  }catch(e){$('bHistBody').innerHTML=`<tr><td colspan="6" style="color:var(--cr);text-align:center">${e.message}</td></tr>`;$('bHistPager').innerHTML=''}
+}
+
+function renderBurpPage(page){
+  bPage=page;
+  const sColors={running:'var(--ac)',succeeded:'var(--ok)',failed:'var(--cr)',cancelled:'var(--t2)',paused:'var(--md)',auditing:'var(--ac)'};
+  const slice=bAllScans.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
+  $('bHistBody').innerHTML=slice.length?slice.map(s=>{
+    const sc=sColors[s.status]||'var(--t2)';
+    const dt=s.created_at?new Date(s.created_at).toLocaleString('zh-TW',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
+    const urls=(s.urls||[]).join(', ');
+    return`<tr>
+      <td style="color:var(--ac);font-weight:700;font-size:11px">${s.task_id}</td>
+      <td style="font-family:var(--sans);font-weight:500">${s.name||'—'}</td>
+      <td style="color:var(--t2);font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${urls}">${urls||'—'}</td>
+      <td style="color:var(--t2);font-size:11px">${s.preset||'—'}</td>
+      <td><span class="st" style="background:${sc}22;color:${sc}">${s.status||'—'}</span></td>
+      <td><button class="b bo" style="padding:3px 10px;font-size:11px" onclick="quickLoadBurp('${s.task_id}')">Load</button></td>
+    </tr>`}).join('')
+  :'<tr><td colspan="6" style="color:var(--t2);text-align:center">尚無掃描記錄</td></tr>';
+  $('bHistPager').innerHTML=renderPager(page, bAllScans.length, 'renderBurpPage', 'bHistPager');
+}
+
+function quickLoadBurp(id){$('bLoadId').value=id;loadBurpResultsById(id)}
+
+function switchTab(tab,btn){$('tabNessus').classList.add('hid');$('tabBurp').classList.add('hid');if(tab==='nessus')$('tabNessus').classList.remove('hid');if(tab==='burp'){$('tabBurp').classList.remove('hid');checkBurp();loadBurpList()}document.querySelectorAll('.tab').forEach(t=>t.classList.remove('tab-active'));btn.classList.add('tab-active')}
 function switchSubTab(sub,btn){$('subScan').classList.add('hid');$('subPolicy').classList.add('hid');if(sub==='scan')$('subScan').classList.remove('hid');if(sub==='policy'){$('subPolicy').classList.remove('hid');loadPolicies();loadPluginFamilies()}document.querySelectorAll('.subtab').forEach(t=>t.classList.remove('subtab-active'));btn.classList.add('subtab-active')}
 
+// Burp 子分頁切換
+function switchBurpSubTab(sub,btn){
+  $('bSubScan').classList.add('hid');
+  $('bSubConfig').classList.add('hid');
+  if(sub==='scan')$('bSubScan').classList.remove('hid');
+  if(sub==='config')$('bSubConfig').classList.remove('hid');
+  document.querySelectorAll('#tabBurp .subtab').forEach(t=>t.classList.remove('subtab-active'));
+  btn.classList.add('subtab-active');
+}
+
+// Preset 選擇
+function selectPreset(preset, card){
+  $('bPreset').value=preset;
+  document.querySelectorAll('.preset-card').forEach(c=>c.classList.remove('active'));
+  if(card)card.classList.add('active');
+  if(preset==='custom'){
+    blogMsg('將使用 Scan Config 的自訂設定');
+    // 切換到 config 子分頁
+    document.querySelectorAll('#tabBurp .subtab')[1].click();
+  } else {
+    blogMsg(`已選擇 ${preset.toUpperCase()} 模板`);
+  }
+}
+
+// Radio button 選擇
+function selectRadio(groupId, value, el){
+  document.querySelectorAll(`#${groupId} .radio-btn`).forEach(b=>b.classList.remove('sel'));
+  el.classList.add('sel');
+  const map={rScanType:'cfgScanType',rProtocol:'cfgProtocol',rScanMode:'cfgScanMode',rLoginType:'cfgLoginType',rResPool:'cfgResPool'};
+  if(map[groupId])$(map[groupId]).value=value;
+}
+
+function saveConfig(){
+  $('cfgSaved').style.display='inline';
+  setTimeout(()=>$('cfgSaved').style.display='none',2000);
+  blogMsg('自訂設定已儲存 ✓','ok');
+}
+
+function toggleLoginType(t){
+  $('loginCredsBox').style.display=t==='credentials'?'grid':'none';
+}
+
+function toggleResPool(t){
+  $('resPoolBox').classList.toggle('hid', t==='default');
+}
+
+// Nessus Scan
 async function go(){const targets=$('sTargets').value.trim();if(!targets){log('請輸入掃描目標','err');return}$('btnGo').disabled=true;stat('Creating scan...','running');log('建立掃描...');try{const body={name:$('sName').value||'VA/PT Scan',targets:targets.replace(/\n/g,', '),description:$('sDesc').value||''};const ports=$('sPorts').value.trim();if(ports)body.port_range=ports;const tmpl=$('sTmpl').value;if(tmpl)body.template_name=tmpl;const pol=$('sPol').value;if(pol)body.policy_id=parseInt(pol);const r=await api('POST','/scans',body);curScan=r.scan_id;log(`掃描 #${curScan} 已建立並啟動 ✓`,'ok');stat(`Scan #${curScan} running...`,'running');startPoll()}catch(e){log(`失敗: ${e.message}`,'err');stat('Failed','error')}$('btnGo').disabled=false}
 function startPoll(){if(pollId)clearInterval(pollId);pollId=setInterval(async()=>{try{const s=await api('GET',`/scans/${curScan}/status`);stat(`Scan #${curScan} — ${s.status}`,s.status==='completed'?'done':'running');if(['completed','canceled','aborted'].includes(s.status)){clearInterval(pollId);pollId=null;log(`掃描結束: ${s.status}`,s.status==='completed'?'ok':'err');loadResults()}}catch(e){log(`poll error: ${e.message}`,'err')}},10000);log('輪詢中（每 10 秒）')}
 async function loadResults(){try{resData=await api('GET',`/scans/${curScan}/results`);render(resData)}catch(e){log(`載入結果失敗: ${e.message}`,'err')}}
@@ -191,11 +578,10 @@ async function loadHostVulns(scanId,hostId,hostname){$('vBody').innerHTML='<tr><
 function closeHostVulns(){$('hostVulnCard').classList.add('hid');selectedHostIdx=null;document.querySelectorAll('#hBody tr').forEach(r=>r.style.background='')}
 
 function dlCSV(){if(curScan)return window.open(`${API}/scans/${curScan}/export/csv`);if(!resData)return log('沒有資料可匯出','err');const rows=[['Host','Plugin ID','Name','Severity','Count','Family']];(resData.hosts||[]).forEach(h=>{(h.vulnerabilities||[]).forEach(v=>rows.push([`"${h.hostname}"`,v.plugin_id,`"${v.plugin_name}"`,v.severity_label||'info',v.count||1,`"${v.plugin_family||''}"`]))});const csv=rows.map(r=>r.join(',')).join('\n');const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`easm_scan_${Date.now()}.csv`;a.click();log('CSV 已匯出','ok')}
-function dlNessus(){if(curScan)return window.open(`${API}/scans/${curScan}/export/pdf`);log('Nessus 原始報告需要真實掃描資料','err')}
-
+function dlNessus(){const sid=curScan||parseInt($('loadSid').value.trim());if(sid)return window.open(`${API}/scans/${sid}/export/nessus`);log('Nessus 原始報告需要真實掃描資料','err')}
 async function loadBySid(){const sid=$('loadSid').value.trim();if(!sid){log('請輸入 Scan ID','err');return}curScan=parseInt(sid);stat(`Loading scan #${sid}...`,'running');log(`載入掃描 #${sid} 的結果...`);try{resData=await api('GET',`/scans/${sid}/results`);render(resData);stat(`Scan #${sid} — ${resData.scan_info?.name||'loaded'}`,'done');log(`掃描 #${sid} 結果載入成功 ✓ (${resData.hosts?.length||0} hosts)`,'ok')}catch(e){log(`載入失敗: ${e.message}`,'err');stat('Load failed','error')}}
 
-function loadDemo(){resData={scan_info:{name:"VA/PT Demo Scan",status:"completed",targets:"203.0.113.0/24",start_time:1711756800,end_time:1711760400,host_count:5,policy:"Advanced Scan",scanner_name:"Local Scanner"},hosts:[{host_id:1,hostname:"203.0.113.10",severity_counts:{critical:2,high:5,medium:12,low:8,info:45},score:78,vulnerabilities:[{plugin_id:57582,plugin_name:"SSL/TLS Certificate Expiry",plugin_family:"General",severity:4,severity_label:"critical",count:1},{plugin_id:10863,plugin_name:"SSL Certificate - Self Signed",plugin_family:"General",severity:4,severity_label:"critical",count:1},{plugin_id:42873,plugin_name:"SSL Medium Strength Cipher Suites",plugin_family:"General",severity:3,severity_label:"high",count:2},{plugin_id:65821,plugin_name:"OpenSSH < 9.0 Multiple Vulnerabilities",plugin_family:"Misc.",severity:3,severity_label:"high",count:1},{plugin_id:35291,plugin_name:"SSL Certificate Signed Using Weak Hashing",plugin_family:"General",severity:2,severity_label:"medium",count:3},{plugin_id:11219,plugin_name:"Nessus SYN scanner",plugin_family:"Port scanners",severity:1,severity_label:"low",count:8},{plugin_id:10180,plugin_name:"Ping the remote host",plugin_family:"Port scanners",severity:0,severity_label:"info",count:1}]},{host_id:2,hostname:"203.0.113.22",severity_counts:{critical:0,high:3,medium:7,low:15,info:62},score:45,vulnerabilities:[{plugin_id:20007,plugin_name:"SSL Version 2 and 3 Protocol Detection",plugin_family:"Service detection",severity:3,severity_label:"high",count:1},{plugin_id:51192,plugin_name:"SSL Certificate Not Trusted",plugin_family:"General",severity:3,severity_label:"high",count:1},{plugin_id:42873,plugin_name:"SSL Medium Strength Cipher Suites",plugin_family:"General",severity:3,severity_label:"high",count:1},{plugin_id:22964,plugin_name:"Service Detection",plugin_family:"Service detection",severity:2,severity_label:"medium",count:4},{plugin_id:10287,plugin_name:"Traceroute Information",plugin_family:"General",severity:2,severity_label:"medium",count:3},{plugin_id:11219,plugin_name:"Nessus SYN scanner",plugin_family:"Port scanners",severity:1,severity_label:"low",count:15},{plugin_id:10180,plugin_name:"Ping the remote host",plugin_family:"Port scanners",severity:0,severity_label:"info",count:1}]},{host_id:3,hostname:"web-server.example.com",severity_counts:{critical:4,high:8,medium:15,low:5,info:30},score:92,vulnerabilities:[{plugin_id:97833,plugin_name:"Apache Log4j RCE (Log4Shell)",plugin_family:"Web Servers",severity:4,severity_label:"critical",count:1},{plugin_id:57582,plugin_name:"SSL/TLS Certificate Expiry",plugin_family:"General",severity:4,severity_label:"critical",count:1},{plugin_id:10863,plugin_name:"SSL Certificate - Self Signed",plugin_family:"General",severity:4,severity_label:"critical",count:1},{plugin_id:34460,plugin_name:"Apache HTTP Server < 2.4.55 RCE",plugin_family:"Web Servers",severity:4,severity_label:"critical",count:1},{plugin_id:42873,plugin_name:"SSL Medium Strength Cipher Suites",plugin_family:"General",severity:3,severity_label:"high",count:2},{plugin_id:65821,plugin_name:"OpenSSH < 9.0 Multiple Vulnerabilities",plugin_family:"Misc.",severity:3,severity_label:"high",count:1},{plugin_id:20007,plugin_name:"SSL Version 2 and 3 Protocol Detection",plugin_family:"Service detection",severity:3,severity_label:"high",count:1},{plugin_id:112552,plugin_name:"PHP < 8.1.0 Multiple Vulnerabilities",plugin_family:"CGI abuses",severity:3,severity_label:"high",count:1},{plugin_id:35291,plugin_name:"SSL Certificate Signed Using Weak Hashing",plugin_family:"General",severity:2,severity_label:"medium",count:2},{plugin_id:22964,plugin_name:"Service Detection",plugin_family:"Service detection",severity:2,severity_label:"medium",count:5},{plugin_id:11219,plugin_name:"Nessus SYN scanner",plugin_family:"Port scanners",severity:1,severity_label:"low",count:5},{plugin_id:10180,plugin_name:"Ping the remote host",plugin_family:"Port scanners",severity:0,severity_label:"info",count:1}]},{host_id:4,hostname:"mail.example.com",severity_counts:{critical:1,high:2,medium:9,low:11,info:38},score:55,vulnerabilities:[{plugin_id:10863,plugin_name:"SSL Certificate - Self Signed",plugin_family:"General",severity:4,severity_label:"critical",count:1},{plugin_id:42873,plugin_name:"SSL Medium Strength Cipher Suites",plugin_family:"General",severity:3,severity_label:"high",count:1},{plugin_id:51192,plugin_name:"SSL Certificate Not Trusted",plugin_family:"General",severity:3,severity_label:"high",count:1},{plugin_id:35291,plugin_name:"SSL Certificate Signed Using Weak Hashing",plugin_family:"General",severity:2,severity_label:"medium",count:2},{plugin_id:22964,plugin_name:"Service Detection",plugin_family:"Service detection",severity:2,severity_label:"medium",count:3},{plugin_id:11219,plugin_name:"Nessus SYN scanner",plugin_family:"Port scanners",severity:1,severity_label:"low",count:11},{plugin_id:10180,plugin_name:"Ping the remote host",plugin_family:"Port scanners",severity:0,severity_label:"info",count:1}]},{host_id:5,hostname:"api.example.com",severity_counts:{critical:3,high:6,medium:4,low:2,info:22},score:85,vulnerabilities:[{plugin_id:97833,plugin_name:"Apache Log4j RCE (Log4Shell)",plugin_family:"Web Servers",severity:4,severity_label:"critical",count:1},{plugin_id:57582,plugin_name:"SSL/TLS Certificate Expiry",plugin_family:"General",severity:4,severity_label:"critical",count:1},{plugin_id:10863,plugin_name:"SSL Certificate - Self Signed",plugin_family:"General",severity:4,severity_label:"critical",count:1},{plugin_id:65821,plugin_name:"OpenSSH < 9.0 Multiple Vulnerabilities",plugin_family:"Misc.",severity:3,severity_label:"high",count:2},{plugin_id:20007,plugin_name:"SSL Version 2 and 3 Protocol Detection",plugin_family:"Service detection",severity:3,severity_label:"high",count:2},{plugin_id:51192,plugin_name:"SSL Certificate Not Trusted",plugin_family:"General",severity:3,severity_label:"high",count:1},{plugin_id:10287,plugin_name:"Traceroute Information",plugin_family:"General",severity:2,severity_label:"medium",count:2},{plugin_id:11219,plugin_name:"Nessus SYN scanner",plugin_family:"Port scanners",severity:1,severity_label:"low",count:2},{plugin_id:10180,plugin_name:"Ping the remote host",plugin_family:"Port scanners",severity:0,severity_label:"info",count:1}]}],severity_summary:{critical:10,high:21,medium:34,low:45,info:197}};curScan=null;render(resData);stat('Demo data loaded — click a host to view vulnerabilities','done');log('已載入 Demo 假資料（5 hosts）— 點擊任一 host 查看弱點','ok')}
+function loadDemo(){resData={scan_info:{name:"VA/PT Demo Scan",status:"completed",targets:"203.0.113.0/24",start_time:1711756800,end_time:1711760400,host_count:5,policy:"Advanced Scan",scanner_name:"Local Scanner"},hosts:[{host_id:1,hostname:"203.0.113.10",severity_counts:{critical:2,high:5,medium:12,low:8,info:45},score:78,vulnerabilities:[{plugin_id:57582,plugin_name:"SSL/TLS Certificate Expiry",plugin_family:"General",severity:4,severity_label:"critical",count:1},{plugin_id:10863,plugin_name:"SSL Certificate - Self Signed",plugin_family:"General",severity:4,severity_label:"critical",count:1},{plugin_id:42873,plugin_name:"SSL Medium Strength Cipher Suites",plugin_family:"General",severity:3,severity_label:"high",count:2}]},{host_id:2,hostname:"203.0.113.22",severity_counts:{critical:0,high:3,medium:7,low:15,info:62},score:45,vulnerabilities:[{plugin_id:20007,plugin_name:"SSL Version 2 and 3 Protocol Detection",plugin_family:"Service detection",severity:3,severity_label:"high",count:1}]}],severity_summary:{critical:2,high:8,medium:19,low:23,info:107}};curScan=null;render(resData);stat('Demo data loaded','done');log('已載入 Demo 假資料','ok')}
 
 function dlTemplate(){window.open(`${API}/batch/template`)}
 async function batchUpload(){const fileInput=$('csvFile');if(!fileInput.files.length){log('請選擇 CSV 檔案','err');return}const file=fileInput.files[0];log(`上傳批次掃描: ${file.name}`);stat('Uploading...','running');const form=new FormData();form.append('file',file);try{const r=await fetch(API+'/batch/scans',{method:'POST',body:form});if(!r.ok)throw new Error(`HTTP ${r.status}`);const data=await r.json();log(`批次結果: ${data.launched} launched / ${data.failed} failed`,data.failed===0?'ok':'err');stat(`Batch: ${data.launched}/${data.total} launched`,data.failed===0?'done':'running');$('batchResult').classList.remove('hid');$('batchBody').innerHTML=(data.scans||[]).map(s=>{const ok=s.status==='launched';return`<tr><td style="font-family:var(--sans);font-weight:500">${s.name}</td><td>${s.targets}</td><td>${s.scan_id||'—'}</td><td style="color:${ok?'var(--ok)':'var(--cr)'};font-weight:700">${s.status}</td></tr>`}).join('');const first=data.scans?.find(s=>s.status==='launched');if(first){curScan=first.scan_id;startPoll()}}catch(e){log(`批次上傳失敗: ${e.message}`,'err');stat('Failed','error')}}
@@ -209,9 +595,62 @@ async function deletePolicy(id){if(!confirm(`確定要刪除 Policy #${id}？`))
 let curBurpTask=null,burpPollId=null,burpResData=null;
 function blogMsg(m,t=''){const b=$('burpLog'),ts=new Date().toLocaleTimeString(),cl=t==='ok'?'ok':t==='err'?'er':'';b.innerHTML+=`<div><span class="ts">[${ts}]</span> <span class="${cl}">${m}</span></div>`;b.scrollTop=b.scrollHeight}
 function bstat(t,s='idle'){$('bTxt').textContent=t;const d=$('bDot');d.className='p';d.classList.add(s==='running'?'p-run':s==='done'?'p-ok':s==='error'?'p-err':'p-idle')}
+
 async function checkBurp(){try{const d=await api('GET','/burp/health');if(d.burp_connected){$('burpStatus').innerHTML='<span style="color:var(--ok)">● Burp Suite Connected</span>';blogMsg('Burp Suite 已連線 ✓','ok')}else{$('burpStatus').innerHTML='<span style="color:var(--cr)">● Disconnected — 請確認 Burp Pro REST API 已啟用</span>';blogMsg('Burp Suite 未連線','err')}}catch(e){$('burpStatus').innerHTML='<span style="color:var(--cr)">● API Error</span>';blogMsg(`連線錯誤: ${e.message}`,'err')}}
-async function burpScan(){const urls=$('bUrls').value.trim();if(!urls){blogMsg('請輸入至少一個 URL','err');return}const urlList=urls.split('\n').map(u=>u.trim()).filter(u=>u);bstat('Launching...','running');blogMsg(`啟動掃描: ${urlList.join(', ')}`);try{const r=await api('POST','/burp/scans',{urls:urlList,name:$('bName').value||null});curBurpTask=r.task_id;blogMsg(`掃描已啟動 ✓ Task ID: ${curBurpTask}`,'ok');bstat(`Burp Scan ${curBurpTask} running...`,'running');$('bLoadId').value=curBurpTask;startBurpPoll()}catch(e){blogMsg(`掃描失敗: ${e.message}`,'err');bstat('Failed','error')}}
-function startBurpPoll(){if(burpPollId)clearInterval(burpPollId);burpPollId=setInterval(async()=>{try{const d=await api('GET',`/burp/scans/${curBurpTask}`);const status=d.status||d.scan_status||'unknown';const progress=d.progress||d.scan_metrics?.crawl_and_audit_progress||0;bstat(`Task ${curBurpTask} — ${status} (${progress}%)`,'running');if(['succeeded','failed','cancelled'].includes(status)){clearInterval(burpPollId);burpPollId=null;blogMsg(`掃描結束: ${status}`,status==='succeeded'?'ok':'err');bstat(`Task ${curBurpTask} — ${status}`,status==='succeeded'?'done':'error');if(status==='succeeded')loadBurpResultsById(curBurpTask)}}catch(e){blogMsg(`poll error: ${e.message}`,'err')}},10000);blogMsg('輪詢中（每 10 秒）')}
+
+async function burpScan(){
+  const urls=$('bUrls').value.trim();
+  if(!urls){blogMsg('請輸入至少一個 URL','err');return}
+  const urlList=urls.split('\n').map(u=>u.trim()).filter(u=>u);
+  const preset=$('bPreset').value;
+
+  $('btnBurpGo').disabled=true;
+  bstat('Launching...','running');
+  blogMsg(`啟動掃描: ${urlList.join(', ')} [${preset.toUpperCase()}]`);
+
+  try{
+    const body={urls:urlList,name:$('bName').value||null,preset};
+
+    // 如果是自訂模式，帶入 Scan Config 的設定
+    if(preset==='custom'){
+      body.scan_type=$('cfgScanType').value;
+      body.protocol=$('cfgProtocol').value;
+      body.scan_mode=$('cfgScanMode').value;
+      body.isolated=$('cfgIsolated').checked;
+      // Scope
+      const inc=$('cfgScopeInclude').value.trim();
+      const exc=$('cfgScopeExclude').value.trim();
+      if(inc)body.scope_include=inc.split('\n').map(u=>u.trim()).filter(u=>u);
+      if(exc)body.scope_exclude=exc.split('\n').map(u=>u.trim()).filter(u=>u);
+      // Auth
+      if($('cfgLoginType').value==='credentials'){
+        const uname=$('cfgUsername').value.trim();
+        if(uname){body.username=uname;body.password=$('cfgPassword').value;body.login_url=$('cfgLoginUrl').value.trim()||null}
+      }
+      // Resource pool
+      if($('cfgResPool').value==='custom'){
+        body.resource_pool={
+          name:$('cfgPoolName').value||'Custom Pool',
+          max_concurrent_requests:parseInt($('cfgPoolConcurrent').value)||10,
+          delay:parseInt($('cfgPoolDelay').value)||0,
+          delay_type:$('cfgPoolDelayType').value,
+          auto_throttle:$('cfgAutoThrottle').checked,
+        }
+      }
+    }
+
+    const r=await api('POST','/burp/scans',body);
+    curBurpTask=r.task_id;
+    blogMsg(`掃描已啟動 ✓ Task ID: ${curBurpTask}`,'ok');
+    loadBurpList();
+    bstat(`Burp Scan ${curBurpTask} running...`,'running');
+    $('bLoadId').value=curBurpTask;
+    startBurpPoll();
+  }catch(e){blogMsg(`掃描失敗: ${e.message}`,'err');bstat('Failed','error')}
+  $('btnBurpGo').disabled=false;
+}
+
+function startBurpPoll(){if(burpPollId)clearInterval(burpPollId);burpPollId=setInterval(async()=>{try{const d=await api('GET',`/burp/scans/${curBurpTask}`);const status=d.status||d.scan_status||'unknown';const progress=d.progress||d.scan_metrics?.crawl_and_audit_progress||0;bstat(`Task ${curBurpTask} — ${status} (${progress}%)`,'running');loadBurpList();if(['succeeded','failed','cancelled','paused'].includes(status)){clearInterval(burpPollId);burpPollId=null;blogMsg(`掃描結束: ${status}`,status==='succeeded'?'ok':'err');bstat(`Task ${curBurpTask} — ${status}`,status==='succeeded'?'done':'error');if(status==='succeeded')loadBurpResultsById(curBurpTask)}}catch(e){blogMsg(`poll error: ${e.message}`,'err')}},10000);blogMsg('輪詢中（每 10 秒）')}
 async function loadBurpResults(){const id=$('bLoadId').value.trim();if(!id){blogMsg('請輸入 Task ID','err');return}curBurpTask=id;await loadBurpResultsById(id)}
 async function loadBurpResultsById(id){bstat(`Loading task ${id}...`,'running');blogMsg(`載入 Burp 結果 #${id}...`);try{burpResData=await api('GET',`/burp/scans/${id}/results`);renderBurpResults(burpResData);bstat(`Task ${id} — ${burpResData.scan_info?.name||'loaded'}`,'done');blogMsg(`結果載入成功 ✓ (${burpResData.vulnerabilities?.length||0} issues)`,'ok')}catch(e){blogMsg(`載入失敗: ${e.message}`,'err');bstat('Load failed','error')}}
 function renderBurpResults(d){$('burpResCard').classList.remove('hid');const sm=d.severity_summary||{};const colors={critical:'var(--cr)',high:'var(--hi)',medium:'var(--md)',low:'var(--lo)',info:'var(--inf)'};$('bSevRow').innerHTML=Object.entries(sm).map(([k,v])=>`<div class="sc" style="background:${colors[k]}18;color:${colors[k]};border:1px solid ${colors[k]}33"><span class="n">${v}</span>${k.toUpperCase()}</div>`).join('');const vulns=d.vulnerabilities||[];$('bVBody').innerHTML=vulns.map(v=>{const c=colors[v.severity]||colors.info;return`<tr><td style="font-family:var(--sans);font-weight:500">${v.name||''}</td><td><span class="st" style="background:${c}22;color:${c}">${(v.severity||'info').toUpperCase()}</span></td><td style="color:var(--t2)">${v.confidence||''}</td><td style="font-family:var(--mono);font-size:11px">${v.path||''}</td><td style="font-family:var(--mono);font-size:11px;color:var(--t2)">${v.origin||''}</td></tr>`}).join('')||'<tr><td colspan="5" style="color:var(--t2);text-align:center">No issues found</td></tr>';blogMsg(`顯示 ${vulns.length} 個弱點`,'ok')}

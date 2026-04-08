@@ -29,7 +29,7 @@ NESSUS_PASSWORD = os.getenv("NESSUS_PASSWORD", "")
 
 # ─── Burp Suite 設定 ──────────────────────────────────
 
-BURP_URL = os.getenv("BURP_URL", "http://127.0.0.1:1337")
+BURP_URL = os.getenv("BURP_URL", "http://192.168.30.137:1337")
 BURP_API_KEY = os.getenv("BURP_API_KEY", "")
 
 scan_tracker: dict = {}
@@ -130,12 +130,17 @@ async def templates():
 async def policies():
     """列出所有掃描策略"""
     n = get_nessus()
-    pols = n.policies.list()
-    pol_list = pols.get("policies", []) if isinstance(pols, dict) else pols
-    return {"policies": [
-        {"id": p.get("id"), "name": p.get("name"), "description": p.get("description", "")}
-        for p in pol_list
-    ]}
+    try:
+        pols = n.policies.list()
+        pol_list = pols.get("policies", []) if isinstance(pols, dict) else pols
+        if not pol_list:
+            return {"policies": []}
+        return {"policies": [
+            {"id": p.get("id"), "name": p.get("name"), "description": p.get("description", "")}
+            for p in pol_list
+        ]}
+    except Exception:
+        return {"policies": []}
 
 
 @app.get("/api/policies/{policy_id}")
@@ -779,13 +784,14 @@ def _poll(sid: int):
 # ═══════════════════════════════════════════════════════
 
 def burp_api(method, path, json_data=None):
-    """Burp Suite REST API helper"""
-    url = f"{BURP_URL}/v0.1{path}"
-    headers = {}
     if BURP_API_KEY:
-        headers["Authorization"] = BURP_API_KEY
+        url = f"{BURP_URL}/{BURP_API_KEY}/v0.1{path}"  # key 在 v0.1 前面
+    else:
+        url = f"{BURP_URL}/v0.1{path}"
+    headers = {"Content-Type": "application/json"}
     try:
         r = req_lib.request(method, url, headers=headers, json=json_data, timeout=30)
+        print(f"[DEBUG] burp_api {method} {url} -> {r.status_code} {r.text[:300]}")
         r.raise_for_status()
         if r.content:
             return r.json()
@@ -798,41 +804,165 @@ def burp_api(method, path, json_data=None):
 
 @app.get("/api/burp/health")
 async def burp_health():
-    """Burp Suite 連線狀態"""
     try:
-        data = burp_api("GET", "/version")
-        return {"status": "ok", "burp_connected": True, "version": data}
-    except:
+        if BURP_API_KEY:
+            url = f"{BURP_URL}/{BURP_API_KEY}/v0.1/knowledge_base/issue_definitions"
+        else:
+            url = f"{BURP_URL}/v0.1/knowledge_base/issue_definitions"
+
+        r = req_lib.get(url, timeout=10)
+        # 200 或 404 都代表 Burp 有回應，就是連線成功
+        if r.status_code in (200, 404):
+            return {"status": "ok", "burp_connected": True}
+        return {"status": "ok", "burp_connected": False}
+    except Exception as e:
+        print(f"[DEBUG] Burp error: {e}")
         return {"status": "ok", "burp_connected": False}
 
+@app.get("/api/burp/scans/list")
+async def burp_list_scans():
+    """列出所有 Burp 掃描記錄"""
+    scans = [
+        {"task_id": k, **v}
+        for k, v in burp_tracker.items()
+    ]
+    return {"scans": scans}
 
 # ─── Burp 掃描管理 ────────────────────────────────────
 
 class BurpScanRequest(BaseModel):
-    urls: list[str] = Field(..., examples=[["https://example.com", "https://api.example.com"]])
+    urls: list[str] = Field(..., examples=[["https://example.com"]])
     name: Optional[str] = Field(None, examples=["Web App Scan"])
+    preset: Optional[str] = Field("standard", examples=["quick", "standard", "deep", "custom"])
 
+    # 自訂模式（Scan Config 頁面的設定）
+    scan_type: Optional[str] = Field("crawl_and_audit")   # crawl_and_audit / crawl / api_only
+    protocol: Optional[str] = Field("httpAndHttps")     # http_and_https / specified
+    scan_mode: Optional[str] = Field(None)                # Burp 官方 preset 名稱，自訂時用
+    isolated: Optional[bool] = Field(False)
+
+    # URL Scope
+    scope_include: Optional[list[str]] = None
+    scope_exclude: Optional[list[str]] = None
+
+    # Application Login
+    login_url: Optional[str] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+
+    # Resource Pool（自訂時用）
+    resource_pool: Optional[dict] = None
+ 
+ 
+# Preset 對應的 Named Configurations
+BURP_PRESETS = {
+    "quick": [
+        "Crawl strategy - fastest",
+        "Audit checks - extensions only",
+    ],
+    "standard": [
+        "Crawl strategy - fast",
+        "Audit checks - all without JavaScript analysis",
+    ],
+    "deep": [
+        "Crawl strategy - most complete",
+        "Audit checks - all",
+        "Audit coverage - thorough",
+    ],
+}
+ 
+CRAWL_STRATEGY_MAP = {
+    "fastest":      "Crawl strategy - fastest",
+    "fast":         "Crawl strategy - fast",
+    "complete":     "Crawl strategy - most complete",
+    "more_complete":"Crawl strategy - more complete",
+}
+ 
+AUDIT_MODE_MAP = {
+    "extensions_only":  "Audit checks - extensions only",
+    "all_without_js":   "Audit checks - all without JavaScript analysis",
+    "all":              "Audit checks - all",
+}
+ 
+AUDIT_COVERAGE_MAP = {
+    "thorough":  "Audit coverage - thorough",
+    "maximize":  "Audit coverage - maximize",
+}
+ 
+INSERTION_POINT_MAP = {
+    "forms_url":        "Audit insertion points - forms and URL parameters only",
+    "forms_url_cookie": "Audit insertion points - forms, URL and cookie parameters",
+    "all":              "Audit insertion points - all except URL parameters",
+}
+ 
 
 @app.post("/api/burp/scans")
 async def burp_create_scan(req: BurpScanRequest, bg: BackgroundTasks):
-    """建立並啟動 Burp 掃描"""
     try:
-        # Burp Pro REST API: POST /v0.1/scan
+        configs = []
+
+        if req.preset and req.preset != "custom":
+            # Quick / Standard / Deep — 不帶 scan_configurations（避免 Unknown config 錯誤）
+            pass
+        else:
+            # 自訂模式 — 直接用 scan_mode 帶 Burp 官方名稱
+            if req.scan_mode:
+                configs.append({"type": "NamedConfiguration", "name": req.scan_mode})
+
         payload = {"urls": req.urls}
-        data = burp_api("POST", "/scan", json_data=payload)
-        task_id = data.get("task_id")
 
-        if task_id:
-            burp_tracker[task_id] = {
-                "name": req.name or ", ".join(req.urls),
-                "urls": req.urls,
-                "status": "running",
-                "engine": "burp",
-                "created_at": datetime.utcnow().isoformat(),
-            }
-            bg.add_task(_poll_burp, task_id)
+        if configs:
+            payload["scan_configurations"] = configs
 
-        return {"task_id": task_id, "status": "launched", "engine": "burp"}
+        # Scope
+        scope = {}
+        if req.scope_include:
+            scope["include"] = [{"rule": u, "type": "SimpleScopeDef"} for u in req.scope_include]
+        if req.scope_exclude:
+            scope["exclude"] = [{"rule": u, "type": "SimpleScopeDef"} for u in req.scope_exclude]
+        if scope:
+            payload["scope"] = scope
+
+        # Application logins
+        if req.username and req.password:
+            login = {"username": req.username, "password": req.password}
+            if req.login_url:
+                login["login_url"] = req.login_url
+            payload["application_logins"] = [login]
+
+        print(f"[DEBUG] Burp scan payload: {payload}")
+
+        url = f"{BURP_URL}/v0.1/scan"
+        headers = {"Content-Type": "application/json"}
+
+        if BURP_API_KEY:
+            url = f"{BURP_URL}/{BURP_API_KEY}/v0.1/scan"  # key 在 v0.1 前面
+        else:
+            url = f"{BURP_URL}/v0.1/scan"
+        if BURP_API_KEY:
+            url = f"{BURP_URL}/v0.1/{BURP_API_KEY}/scan"
+
+        r = req_lib.post(url, headers=headers, json=payload, timeout=30)
+        print(f"[DEBUG] Burp response: {r.status_code} body={r.text[:300]}")
+
+        location = r.headers.get("Location", "")
+        task_id = location.rstrip("/").split("/")[-1] if location else None
+
+        if not task_id or task_id == "scan":
+            raise HTTPException(500, f"無法取得 Task ID，Burp 回傳: {r.status_code}")
+
+        burp_tracker[task_id] = {
+            "name": req.name or ", ".join(req.urls),
+            "urls": req.urls,
+            "status": "running",
+            "engine": "burp",
+            "preset": req.preset or "custom",
+            "created_at": datetime.utcnow().isoformat(),
+        }
+        bg.add_task(_poll_burp, task_id)
+
+        return {"task_id": task_id, "status": "launched", "engine": "burp", "preset": req.preset}
+
     except HTTPException:
         raise
     except Exception as e:
@@ -908,13 +1038,12 @@ async def burp_scan_results(task_id: str):
 
 @app.get("/api/burp/scans/{task_id}/export/html")
 async def burp_export_html(task_id: str):
-    """匯出 Burp 掃描報告（HTML）"""
     try:
-        url = f"{BURP_URL}/v0.1/scan/{task_id}/report?report_type=HTML"
-        headers = {}
         if BURP_API_KEY:
-            headers["Authorization"] = BURP_API_KEY
-        r = req_lib.get(url, headers=headers, timeout=60)
+            url = f"{BURP_URL}/v0.1/{BURP_API_KEY}/scan/{task_id}/report?reportType=HTML"
+        else:
+            url = f"{BURP_URL}/v0.1/scan/{task_id}/report?reportType=HTML"
+        r = req_lib.get(url, timeout=60)
         r.raise_for_status()
         return StreamingResponse(
             io.BytesIO(r.content),
@@ -927,13 +1056,12 @@ async def burp_export_html(task_id: str):
 
 @app.get("/api/burp/scans/{task_id}/export/xml")
 async def burp_export_xml(task_id: str):
-    """匯出 Burp 掃描報告（XML）"""
     try:
-        url = f"{BURP_URL}/v0.1/scan/{task_id}/report?report_type=XML"
-        headers = {}
         if BURP_API_KEY:
-            headers["Authorization"] = BURP_API_KEY
-        r = req_lib.get(url, headers=headers, timeout=60)
+            url = f"{BURP_URL}/v0.1/{BURP_API_KEY}/scan/{task_id}/report?reportType=XML"
+        else:
+            url = f"{BURP_URL}/v0.1/scan/{task_id}/report?reportType=XML"
+        r = req_lib.get(url, timeout=60)
         r.raise_for_status()
         return StreamingResponse(
             io.BytesIO(r.content),
